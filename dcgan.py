@@ -19,8 +19,8 @@ from torch.autograd import Variable
 
 
 parser = argparse.ArgumentParser()
-parser.add_argument('--dataset', required=True, help='cifar10 | lsun | imagenet | folder | lfw ')
-parser.add_argument('--dataroot', required=True, help='path to dataset')
+parser.add_argument('--dataroot_real', required=True, help='path to dataset')
+parser.add_argument('--dataroot_fake', required=True, help='path to dataset')
 parser.add_argument('--workers', type=int, help='number of data loading workers', default=2)
 parser.add_argument('--batchSize', type=int, default=64, help='input batch size')
 parser.add_argument('--imageSize', type=int, default=64, help='the height / width of the input image to network')
@@ -58,40 +58,39 @@ cudnn.benchmark = True
 if torch.cuda.is_available() and not opt.cuda:
     print("WARNING: You have a CUDA device, so you should probably run with --cuda")
 
-if opt.dataset in ['imagenet', 'folder', 'lfw']:
-    # folder dataset
-    dataset = dset.ImageFolder(root=opt.dataroot,
-                               transform=transforms.Compose([
-                                   transforms.Scale(opt.imageSize),
-                                   transforms.CenterCrop(opt.imageSize),
-                                   transforms.ToTensor(),
-                                   transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5)),
-                               ]))
-elif opt.dataset == 'lsun':
-    dataset = dset.LSUN(db_path=opt.dataroot, classes=['bedroom_train'],
-                        transform=transforms.Compose([
-                            transforms.Scale(opt.imageSize),
-                            transforms.CenterCrop(opt.imageSize),
-                            transforms.ToTensor(),
-                            transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5)),
-                        ]))
-elif opt.dataset == 'cifar10':
-    dataset = dset.CIFAR10(root=opt.dataroot, download=True,
-                           transform=transforms.Compose([
-                               transforms.Scale(opt.imageSize),
-                               transforms.ToTensor(),
-                               transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5)),
-                           ])
-    )
-assert dataset
-dataloader = torch.utils.data.DataLoader(dataset, batch_size=opt.batchSize,
-                                         shuffle=True, num_workers=int(opt.workers))
+
+# folder dataset
+dataset_real = dset.ImageFolder(root=opt.dataroot_real,
+                                transform=transforms.Compose([
+                                    transforms.Scale(opt.imageSize),
+                                    transforms.CenterCrop(opt.imageSize),
+                                    transforms.ToTensor(),
+                                    transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5)),
+                                ]))
+
+assert dataset_real
+dataloader_real = torch.utils.data.DataLoader(dataset_real, batch_size=opt.batchSize,
+                                              shuffle=True, num_workers=int(opt.workers))
+
+# folder dataset
+dataset_fake = dset.ImageFolder(root=opt.dataroot_fake,
+                                transform=transforms.Compose([
+                                    transforms.Scale(opt.imageSize),
+                                    transforms.CenterCrop(opt.imageSize),
+                                    transforms.ToTensor(),
+                                    transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5)),
+                                ]))
+
+assert dataset_fake
+dataloader_fake = torch.utils.data.DataLoader(dataset_fake, batch_size=opt.batchSize,
+                                              shuffle=True, num_workers=int(opt.workers))
+
 
 ngpu = int(opt.ngpu)
 nz = int(opt.nz)
 ngf = int(opt.ngf)
 ndf = int(opt.ndf)
-nc = 3
+nc = 3  # Number of channels
 
 
 # custom weights initialization called on netG and netD
@@ -110,7 +109,7 @@ class _netG(nn.Module):
         self.ngpu = ngpu
         self.main = nn.Sequential(
             # input is Z, going into a convolution
-            nn.ConvTranspose2d(     nz, ngf * 8, 4, 1, 0, bias=False),
+            nn.ConvTranspose2d(nz, ngf * 8, 4, 1, 0, bias=False),
             nn.BatchNorm2d(ngf * 8),
             nn.ReLU(True),
             # state size. (ngf*8) x 4 x 4
@@ -122,11 +121,78 @@ class _netG(nn.Module):
             nn.BatchNorm2d(ngf * 2),
             nn.ReLU(True),
             # state size. (ngf*2) x 16 x 16
-            nn.ConvTranspose2d(ngf * 2,     ngf, 4, 2, 1, bias=False),
+            nn.ConvTranspose2d(ngf * 2, ngf, 4, 2, 1, bias=False),
             nn.BatchNorm2d(ngf),
             nn.ReLU(True),
             # state size. (ngf) x 32 x 32
-            nn.ConvTranspose2d(    ngf,      nc, 4, 2, 1, bias=False),
+            nn.ConvTranspose2d(ngf, nc, 4, 2, 1, bias=False),
+            nn.Tanh()
+            # state size. (nc) x 64 x 64
+        )
+
+    def forward(self, input):
+        if isinstance(input.data, torch.cuda.FloatTensor) and self.ngpu > 1:
+            output = nn.parallel.data_parallel(self.main, input, range(self.ngpu))
+        else:
+            output = self.main(input)
+        return output
+
+
+class _netG_autoencoder(nn.Module):
+    def __init__(self, ngpu):
+        super(netG, self).__init__()
+        self.ngpu = ngpu
+        self.main = nn.Sequential(
+            # ENCODER
+            # input is (nc) x 64 x 64
+            # class torch.nn.Conv2d(in_channels, out_channels, kernel_size, stride=1, padding=0, dilation=1, groups=1, bias=True)
+            nn.Conv2d(nc, ngf, 4, 2, 1, bias=False),
+            nn.LeakyReLU(0.2, inplace=True),
+            # state size. (ngf) x 32 x 32
+            nn.Conv2d(in_channels=ngf, out_channels=ngf * 2, kernel_size=4, stride=2, padding=1, bias=False),
+            nn.BatchNorm2d(ngf * 2),
+            nn.LeakyReLU(0.2, inplace=True),
+            # state size. (ngf*2) x 16 x 16
+            nn.Conv2d(in_channels=ngf * 2, out_channels=ngf * 4, kernel_size=4, stride=2, padding=1, bias=False),
+            nn.BatchNorm2d(ngf * 4),
+            nn.LeakyReLU(0.2, inplace=True),
+            # state size. (ngf*4) x 8 x 8
+            nn.Conv2d(in_channels=ngf * 4, out_channels=ngf * 8, kernel_size=4, stride=2, padding=1, bias=False),
+            nn.BatchNorm2d(ngf * 8),
+            nn.LeakyReLU(0.2, inplace=True),
+            # state size. (ngf*8) x 4 x 4
+            nn.Conv2d(in_channels=ngf * 8, out_channels=ngf * 8, kernel_size=4, stride=2, padding=1, bias=False),
+            nn.BatchNorm2d(ngf * 8),
+            nn.LeakyReLU(0.2, inplace=True),
+            # state size. (ngf*8) x 2 x 2
+            nn.Conv2d(in_channels=ngf * 8, out_channels=ngf * 8, kernel_size=4, stride=2, padding=1, bias=False),
+            nn.BatchNorm2d(ngf * 8),
+            nn.LeakyReLU(0.2, inplace=True),
+            # state size. (ngf*8) x 1 x 1
+
+            # DECODER
+            # class torch.nn.ConvTranspose2d(in_channels, out_channels, kernel_size, stride=1, padding=0, output_padding=0, groups=1, bias=True)
+            nn.ConvTranspose2d(ngf * 8, ngf * 8, 4, 2, 1, bias=False),
+            nn.BatchNorm2d(ngf * 8),
+            nn.ReLU(True),
+            # state size. (ngf*8) x 2 x 2
+            nn.ConvTranspose2d(ngf * 8, ngf * 8, 4, 2, 1, bias=False),
+            nn.BatchNorm2d(ngf * 4),
+            nn.ReLU(True),
+            # state size. (ngf*8) x 4 x 4
+            nn.ConvTranspose2d(ngf * 8, ngf * 4, 4, 2, 1, bias=False),
+            nn.BatchNorm2d(ngf * 2),
+            nn.ReLU(True),
+            # state size. (ngf*4) x 8 x 8
+            nn.ConvTranspose2d(ngf * 4, ngf, 4, 2, 1, bias=False),
+            nn.BatchNorm2d(ngf),
+            nn.ReLU(True),
+            # state size. (ngf*2) x 16 x 16
+            nn.ConvTranspose2d(ngf * 2, ngf, 4, 2, 1, bias=False),
+            nn.BatchNorm2d(ngf),
+            nn.ReLU(True),
+            # state size. (ngf) x 32 x 32
+            nn.ConvTranspose2d(ngf, nc, 4, 2, 1, bias=False),
             nn.Tanh()
             # state size. (nc) x 64 x 64
         )
@@ -140,7 +206,12 @@ class _netG(nn.Module):
 
 
 netG = _netG(ngpu)
+netG_autoencoder = _netG_autoencoder(ngpu)
+
+netG_autoencoder.apply(weights_init)
+
 netG.apply(weights_init)
+
 if opt.netG != '':
     netG.load_state_dict(torch.load(opt.netG))
 print(netG)
@@ -189,6 +260,7 @@ print(netD)
 criterion = nn.BCELoss()
 
 input = torch.FloatTensor(opt.batchSize, 3, opt.imageSize, opt.imageSize)
+input_fake = torch.FloatTensor(opt.batchSize, 3, opt.imageSize, opt.imageSize)
 noise = torch.FloatTensor(opt.batchSize, nz, 1, 1)
 fixed_noise = torch.FloatTensor(opt.batchSize, nz, 1, 1).normal_(0, 1)
 label = torch.FloatTensor(opt.batchSize)
@@ -200,9 +272,11 @@ if opt.cuda:
     netG.cuda()
     criterion.cuda()
     input, label = input.cuda(), label.cuda()
+    input_fake = input_fake.cuda()
     noise, fixed_noise = noise.cuda(), fixed_noise.cuda()
 
 input = Variable(input)
+input_fake = Variable(input_fake)
 label = Variable(label)
 noise = Variable(noise)
 fixed_noise = Variable(fixed_noise)
@@ -212,15 +286,20 @@ optimizerD = optim.Adam(netD.parameters(), lr=opt.lr, betas=(opt.beta1, 0.999))
 optimizerG = optim.Adam(netG.parameters(), lr=opt.lr, betas=(opt.beta1, 0.999))
 
 for epoch in range(opt.niter):
-    for i, data in enumerate(dataloader, 0):
+    for i, data in enumerate(dataloader_real, 0):
+        data_fake = dataloader_fake.next()
         ############################
         # (1) Update D network: maximize log(D(x)) + log(1 - D(G(z)))
         ###########################
         # train with real
         netD.zero_grad()
         real_cpu, _ = data
+        input_fake_cpu, _ = data_fake
+
         batch_size = real_cpu.size(0)
+
         input.data.resize_(real_cpu.size()).copy_(real_cpu)
+        input_fake.data.resize_(input_fake_cpu.size()).copy_(input_fake_cpu)
         label.data.resize_(batch_size).fill_(real_label)
 
         output = netD(input)
