@@ -106,8 +106,8 @@ class GANLoss(nn.Module):
 # if |num_downs| == 7, image of size 128x128 will become of size 1x1
 # at the bottleneck
 class UnetGenerator(nn.Module):
-    def __init__(self, input_nc, output_nc, num_downs, ngf=64,
-                 norm_layer=nn.BatchNorm2d, opt):
+    def __init__(self, input_nc, output_nc, num_downs, ngf,
+                 norm_layer, opt):
         super(UnetGenerator, self).__init__()
         self.gpu_ids = gpu_ids
 
