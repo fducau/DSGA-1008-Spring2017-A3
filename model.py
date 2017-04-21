@@ -56,8 +56,8 @@ class netModel(BaseModel):
             print('-----------------------------------------------')
 
     def set_input(self, input):
-        input_real = input[0]
-        input_fake = input[1]
+        input_real = input[0][0]
+        input_fake = input[1][0]
 
         self.input_real.resize_(input_real.size()).copy_(input_real)
         self.input_fake.resize_(input_fake.size()).copy_(input_fake)
