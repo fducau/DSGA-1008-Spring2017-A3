@@ -19,14 +19,14 @@ def define_G(input_nc, output_nc, ngf, which_model_netG, norm, gpu_ids=[]):
     if use_gpu:
         assert(torch.cuda.is_available())
 
-    elif which_model_netG == 'unet_128':
+    if which_model_netG == 'unet_128':
         netG = UnetGenerator(input_nc, output_nc, 7, ngf, norm_layer, gpu_ids=gpu_ids)
     elif which_model_netG == 'unet_256':
         netG = UnetGenerator(input_nc, output_nc, 8, ngf, norm_layer, gpu_ids=gpu_ids)
     else:
         print('Generator model name [%s] is not recognized' % which_model_netG)
     if len(gpu_ids) > 0:
-        netG.cuda(device_id=gpu_ids[0])
+        netG.cuda()
     netG.apply(weights_init)
     return netG
 
@@ -45,7 +45,7 @@ def define_D(input_nc, ndf, which_model_netD,
         print('Discriminator model name [%s] is not recognized' %
               which_model_netD)
     if use_gpu:
-        netD.cuda(device_id=gpu_ids[0])
+        netD.cuda()
     netD.apply(weights_init)
     return netD
 
@@ -115,7 +115,7 @@ class GANLoss(nn.Module):
 # at the bottleneck
 class UnetGenerator(nn.Module):
     def __init__(self, input_nc, output_nc, num_downs, ngf,
-                 norm_layer, opt):
+                 norm_layer, gpu_ids=[]):
         super(UnetGenerator, self).__init__()
         self.gpu_ids = gpu_ids
 
@@ -135,7 +135,8 @@ class UnetGenerator(nn.Module):
 
     def forward(self, input):
         if isinstance(input.data, torch.cuda.FloatTensor) and self.gpu_ids:
-            return nn.parallel.data_parallel(self.model, input, self.gpu_ids)
+            #return nn.parallel.data_parallel(self.model, input, self.gpu_ids)
+            return self.model(input)
         else:
             return self.model(input)
 
@@ -194,7 +195,7 @@ class NLayerDiscriminator(nn.Module):
         super(NLayerDiscriminator, self).__init__()
         self.gpu_ids = gpu_ids
         # HYPERPARAMETER?
-        kw = 4
+        kw = 16
         sequence = [
             nn.Conv2d(input_nc, ndf, kernel_size=kw, stride=2, padding=2),
             nn.LeakyReLU(0.2, True)
@@ -232,7 +233,8 @@ class NLayerDiscriminator(nn.Module):
 
     def forward(self, input):
         if isinstance(input.data, torch.cuda.FloatTensor) and self.gpu_ids:
-            return nn.parallel.data_parallel(self.model, input, self.gpu_ids)
+            #return nn.parallel.data_parallel(self.model, input, self.gpu_ids)
+            return self.model(input)
         else:
             return self.model(input)
 

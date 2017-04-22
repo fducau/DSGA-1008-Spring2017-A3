@@ -17,7 +17,7 @@ class netModel(BaseModel):
 
     def initialize(self, opt):
         BaseModel.initialize(self, opt)
-        # self.isTrain = opt.isTrain
+        self.isTrain = True
         # define tensors
         self.input_real = self.Tensor(opt.batchSize, opt.input_nc,
                                    opt.imageSize, opt.imageSize)
@@ -34,10 +34,10 @@ class netModel(BaseModel):
                                          opt.which_model_netD,
                                          opt.n_layers_D, use_sigmoid, self.gpu_ids)
 
-        if not self.isTrain or opt.continue_train:
-            self.load_network(self.netG, 'G', opt.which_epoch)
-            if self.isTrain:
-                self.load_network(self.netD, 'D', opt.which_epoch)
+        #if not self.isTrain or opt.continue_train:
+        #    self.load_network(self.netG, 'G', opt.which_epoch)
+        #    if self.isTrain:
+        #        self.load_network(self.netD, 'D', opt.which_epoch)
 
         if self.isTrain:
             # self.fake_AB_pool = ImagePool(opt.pool_size)
@@ -91,6 +91,7 @@ class netModel(BaseModel):
         self.loss_D_real.backward()
         # Combined loss
         self.loss_D = (self.loss_D_fake + self.loss_D_real) * 0.5
+        #self.loss_D.backward()
 
     def backward_G(self):
         # First, G(A) should fake the discriminator
@@ -98,7 +99,7 @@ class netModel(BaseModel):
         self.loss_G_GAN = self.criterionGAN(pred_fake, True)
 
         # Second, G(A) = B
-        self.loss_G_L1 = self.criterionL1(self.fake_in, self.fake_out) * self.opt.lambda_A
+        self.loss_G_L1 = self.criterionL1(self.fake_out, self.fake_in) * self.opt.L1lambda
 
         self.loss_G = self.loss_G_GAN + self.loss_G_L1
 
@@ -124,10 +125,12 @@ class netModel(BaseModel):
         ])
 
     def get_current_visuals(self):
-        fake_in = util.tensor2im(self.fake_in.data)
-        fake_out = util.tensor2im(self.fake_out.data)
-        rereal_out = util.tensor2im(self.real_out.data)
-        return OrderedDict([('fake_in', fake_in), ('fake_out', fake_out), ('real_out', real_out)])
+        #fake_in = util.tensor2im(self.fake_in.data)
+        #fake_out = util.tensor2im(self.fake_out.data)
+        #real_out = util.tensor2im(self.real_out.data)
+        return OrderedDict([('fake_in', self.fake_in),
+                            ('fake_out', self.fake_out),
+                            ('real_out', self.real_out)])
 
     def save(self, label):
         self.save_network(self.netG, 'G', label, self.gpu_ids)
