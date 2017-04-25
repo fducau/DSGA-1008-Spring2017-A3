@@ -23,6 +23,10 @@ class netModel(BaseModel):
                                    opt.imageSize, opt.imageSize)
         self.input_fake = self.Tensor(opt.batchSize, opt.output_nc,
                                    opt.imageSize, opt.imageSize)
+        self.input_mask = self.Tensor(opt.batchSize, opt.output_nc,
+                                   opt.imageSize, opt.imageSize)
+        self.ones = Variable(self.Tensor(opt.batchSize, opt.output_nc,
+                                opt.imageSize, opt.imageSize).fill_(1.))
 
         # load/define networks
         self.netG = networks.define_G(opt.input_nc, opt.output_nc, opt.ngf,
@@ -60,14 +64,17 @@ class netModel(BaseModel):
     def set_input(self, input):
         input_real = input[0][0]
         input_fake = input[1][0]
+        input_mask = input[2][0]
 
         self.input_real.resize_(input_real.size()).copy_(input_real)
         self.input_fake.resize_(input_fake.size()).copy_(input_fake)
+        self.input_mask.resize_(input_mask.size()).copy_(input_mask)
 
     def forward(self):
         self.fake_in = Variable(self.input_fake)
         self.fake_out = self.netG.forward(self.fake_in)
         self.real_out = Variable(self.input_real)
+        self.mask = Variable(self.input_mask)
 
     # no backprop gradients
     def test(self):
@@ -99,8 +106,10 @@ class netModel(BaseModel):
         self.loss_G_GAN = self.criterionGAN(pred_fake, True)
 
         # Second, G(A) = B
-        self.loss_G_L1 = self.criterionL1(self.fake_out, self.fake_in) * self.opt.L1lambda
+        self.loss_G_L1_fg = self.criterionL1(self.fake_out * self.mask, self.fake_in * self.mask) * self.opt.L1lambda_fg
+        self.loss_G_L1_bg = self.criterionL1(self.fake_out * (self.ones - self.mask), self.fake_in * (self.ones - self.mask)) * self.opt.L1lambda_bg
 
+        self.loss_G_L1 = self.loss_G_L1_fg + self.loss_G_L1_bg
         self.loss_G = self.loss_G_GAN + self.loss_G_L1
 
         self.loss_G.backward()
