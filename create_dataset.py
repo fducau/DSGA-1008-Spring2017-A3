@@ -6,8 +6,8 @@ import numpy as np
 
 bg_folder = './data/scenic/'
 fg_folder = './data/animal_database/'
-output_folder = './data/composed/'
-N = 1   # Dataset size
+output_folder = './data/fake/'
+N = 10048  # Dataset size
 
 
 def get_image_path(root, img_type='jpg'):
@@ -40,7 +40,7 @@ def merge_fg_bg(fg, seg, bg):
 
     composed = cv2.add(fg_crop, bg_hole)
 
-    return composed
+    return composed, seg * 255
 
 
 
@@ -59,8 +59,10 @@ def main():
         seg = cv2.imread(seg_file)
         bg = cv2.imread(bg_file)
 
-        composed = merge_fg_bg(fg, seg, bg)
-        cv2.imwrite(output_folder + str(i) + '.png', composed)
+        composed, mask = merge_fg_bg(fg, seg, bg)
+        #composed = np.concatenate((composed, mask), 1)
+        cv2.imwrite(output_folder + '/imgs/img/' + str(i) + '.png', composed)
+        cv2.imwrite(output_folder + '/masks/mask/' + str(i) + '.png', mask)
 
 
 
