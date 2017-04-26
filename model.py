@@ -21,7 +21,7 @@ class netModel(BaseModel):
         # define tensors
         self.input_real = self.Tensor(opt.batchSize, opt.input_nc,
                                    opt.imageSize, opt.imageSize)
-        self.input_fake = self.Tensor(opt.batchSize, opt.output_nc,
+        self.input_fake = self.Tensor(opt.batchSize, opt.output_nc + 1,
                                    opt.imageSize, opt.imageSize)
         self.input_mask = self.Tensor(opt.batchSize, opt.output_nc,
                                    opt.imageSize, opt.imageSize)
@@ -29,7 +29,7 @@ class netModel(BaseModel):
                                 opt.imageSize, opt.imageSize).fill_(1.))
 
         # load/define networks
-        self.netG = networks.define_G(opt.input_nc, opt.output_nc, opt.ngf,
+        self.netG = networks.define_G(opt.input_nc + 1, opt.output_nc + 1, opt.ngf,
                                       opt.which_model_netG, opt.norm, self.gpu_ids)
 
         if self.isTrain:
@@ -63,8 +63,10 @@ class netModel(BaseModel):
 
     def set_input(self, input):
         input_real = input[0][0]
-        input_fake = input[1][0]
-        input_mask = input[2][0]
+        input_f = input[1][0]
+        input_fake = input_f[:,:,:,:128]
+        input_mask = input_f[:,0,:,128:].resize_(32,1,128,128)
+        input_fake = torch.cat([input_fake, input_mask], 1)
 
         self.input_real.resize_(input_real.size()).copy_(input_real)
         self.input_fake.resize_(input_fake.size()).copy_(input_fake)
@@ -89,7 +91,7 @@ class netModel(BaseModel):
     def backward_D(self):
         # Fake
         # stop backprop to the generator by detaching fake_B
-        self.pred_fake = self.netD.forward(self.fake_out.detach())
+        self.pred_fake = self.netD.forward(self.fake_out[:,:3,:,:].detach())
         self.loss_D_fake = self.criterionGAN(self.pred_fake, False)
         self.loss_D_fake.backward()
         # Real
@@ -102,13 +104,13 @@ class netModel(BaseModel):
 
     def backward_G(self):
         # First, G(A) should fake the discriminator
-        pred_fake = self.netD.forward(self.fake_out)
+        pred_fake = self.netD.forward(self.fake_out[:,:3,:,:])
         self.loss_G_GAN = self.criterionGAN(pred_fake, True)
 
         # Second, G(A) = B
         #self.loss_G_L1 = self.criterionL1(self.fake_out, self.fake_in) * self.opt.L1lambda
-        self.loss_G_L1_fg = self.criterionL1(self.fake_out * (self.mask), self.fake_in * (self.mask)) * self.opt.L1lambda_fg
-        self.loss_G_L1_bg = self.criterionL1(self.fake_out * (self.ones - self.mask), self.fake_in * (self.ones - self.mask)) * self.opt.L1lambda_bg
+        self.loss_G_L1_bg = self.criterionL1(self.fake_out[:,:3,:,:] * (torch.cat([self.mask,self.mask,self.mask],1)), self.fake_in[:,:3,:,:] * (torch.cat([self.mask,self.mask,self.mask],1))) * self.opt.L1lambda_bg
+        self.loss_G_L1_fg = self.criterionL1(self.fake_out[:,:3,:,:] * (self.ones - torch.cat([self.mask,self.mask,self.mask],1)), self.fake_in[:,:3,:,:] * (self.ones - torch.cat([self.mask,self.mask,self.mask],1))) * self.opt.L1lambda_fg
 
         self.loss_G_L1 = self.loss_G_L1_fg + self.loss_G_L1_bg
         self.loss_G = self.loss_G_GAN + self.loss_G_L1
@@ -138,8 +140,8 @@ class netModel(BaseModel):
         #fake_in = util.tensor2im(self.fake_in.data)
         #fake_out = util.tensor2im(self.fake_out.data)
         #real_out = util.tensor2im(self.real_out.data)
-        return OrderedDict([('fake_in', self.fake_in),
-                            ('fake_out', self.fake_out),
+        return OrderedDict([('fake_in', self.fake_in[:,:3,:,:]),
+                            ('fake_out', self.fake_out[:,:3,:,:]),
                             ('real_out', self.real_out)])
 
     def save(self, label):

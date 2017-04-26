@@ -6,7 +6,7 @@ import numpy as np
 
 bg_folder = './data/scenic/'
 fg_folder = './data/animal_database/'
-output_folder = './data/fake/'
+output_folder = './data/fake3/'
 N = 10048  # Dataset size
 
 
@@ -32,8 +32,10 @@ def merge_fg_bg(fg, seg, bg):
     seg = 1.0 * seg / seg.max()
     seg[seg == seg.min()] = 0.
 
+    neg_seg = 1.0 - seg
+
     fg = fg * 1.    # Cast foreground to float
-    fg_crop = cv2.multiply(fg, 1. - seg)
+    fg_crop = cv2.multiply(fg, neg_seg)
 
     bg = bg * 1.    # Cast bg to float
     bg_hole = cv2.multiply(bg, seg)
@@ -60,9 +62,9 @@ def main():
         bg = cv2.imread(bg_file)
 
         composed, mask = merge_fg_bg(fg, seg, bg)
-        #composed = np.concatenate((composed, mask), 1)
+        composed = np.concatenate((composed, mask), 1)
         cv2.imwrite(output_folder + '/imgs/img/' + str(i) + '.png', composed)
-        cv2.imwrite(output_folder + '/masks/mask/' + str(i) + '.png', mask)
+        #cv2.imwrite(output_folder + '/masks/mask/' + str(i) + '.png', mask)
 
 
 

@@ -28,8 +28,8 @@ import numpy as np
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--dataroot_real', help='path to dataset', default='./data/imagenet/')
-parser.add_argument('--dataroot_fake', help='path to dataset', default='./data/fake/imgs/')
-parser.add_argument('--dataroot_masks', help='path to dataset', default='./data/fake/masks/')
+parser.add_argument('--dataroot_fake', help='path to dataset', default='./data/fake3/imgs/')
+parser.add_argument('--dataroot_masks', help='path to dataset', default='./data/fake3/masks/')
 parser.add_argument('--workers', type=int, help='number of data loading workers', default=1)
 parser.add_argument('--batchSize', type=int, default=32, help='input batch size')
 parser.add_argument('--imageSize', type=int, default=128, help='the height / width of the input image to network')
@@ -39,7 +39,7 @@ parser.add_argument('--ndf', type=int, default=64, help='# of discrim filters in
 parser.add_argument('--niter', type=int, default=100, help='number of epochs to train for')
 parser.add_argument('--lr', type=float, default=0.0002, help='learning rate, default=0.0002')
 parser.add_argument('--beta1', type=float, default=0.5, help='beta1 for adam. default=0.5')
-parser.add_argument('--L1lambda', type=float,default=0.0, help='Loss in generator')
+parser.add_argument('--L1lambda', type=float,default=1.5, help='Loss in generator')
 parser.add_argument('--L1lambda_fg', type=float,default=1., help='Loss in generator')
 parser.add_argument('--L1lambda_bg', type=float,default=10., help='Loss in generator')
 
@@ -118,25 +118,24 @@ dataloader_real = torch.utils.data.DataLoader(dataset_real, batch_size=opt.batch
 dataset_fake = dset.ImageFolder(root=opt.dataroot_fake,
                                 transform=transforms.Compose([
                                     transforms.Scale(opt.imageSize),
-                                    transforms.CenterCrop(opt.imageSize),
                                     transforms.ToTensor(),
                                     transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5)),
                                 ]))
 
-dataset_masks = dset.ImageFolder(root=opt.dataroot_masks,
-                                transform=transforms.Compose([
-                                    transforms.Scale(opt.imageSize),
-                                    transforms.CenterCrop(opt.imageSize),
-                                    transforms.ToTensor(),
-                                ]),
-                                loader=default_loader1)
+#dataset_masks = dset.ImageFolder(root=opt.dataroot_masks,
+#                                transform=transforms.Compose([
+#                                    transforms.Scale(opt.imageSize),
+#                                    transforms.CenterCrop(opt.imageSize),
+#                                    transforms.ToTensor(),
+#                                ]),
+#                                loader=default_loader1)
 
 assert dataset_fake
 dataloader_fake = torch.utils.data.DataLoader(dataset_fake, batch_size=opt.batchSize,
                                               shuffle=False, num_workers=int(opt.workers))
 
-dataloader_mask = torch.utils.data.DataLoader(dataset_masks, batch_size=opt.batchSize,
-                                              shuffle=False, num_workers=int(opt.workers))
+#dataloader_mask = torch.utils.data.DataLoader(dataset_masks, batch_size=opt.batchSize,
+#                                              shuffle=False, num_workers=int(opt.workers))
 model = netModel()
 model.initialize(opt)
 print("model was created")
@@ -146,14 +145,14 @@ total_steps = 0
 for epoch in range(opt.niter):
     epoch_start_time = time.time()
     i=-1
-    for data, (data_fake, data_mask) in izip(dataloader_real, cycle(izip(iter(dataloader_fake), iter(dataloader_mask)))):
-    #for data, data_fake in izip(dataloader_real, cycle(dataloader_fake)):
+    #for data, (data_fake, data_mask) in izip(dataloader_real, cycle(izip(iter(dataloader_fake), iter(dataloader_mask)))):
+    for data, data_fake in izip(dataloader_real, cycle(dataloader_fake)):
         i+=1
         iter_start_time = time.time()
         total_steps += opt.batchSize
         epoch_iter = total_steps - dataset_size * (epoch - 1)
 
-        model.set_input((data, data_fake, data_mask))
+        model.set_input((data, data_fake))
         model.optimize_parameters()
 
         if i % opt.display_freq == 0:
