@@ -2,12 +2,13 @@ import torch
 import torch.nn as nn
 from torch.autograd import Variable
 from pdb import set_trace as st
+from resnet import *
 
 ###############################################################################
 # Functions
 ###############################################################################
 
-def define_G(input_nc, output_nc, ngf, which_model_netG, norm, gpu_ids=[]):
+def define_G(input_nc, output_nc, ngf, norm, gpu_ids=[]):
     netG = None
     use_gpu = len(gpu_ids) > 0
     if norm == 'batch':
@@ -19,15 +20,10 @@ def define_G(input_nc, output_nc, ngf, which_model_netG, norm, gpu_ids=[]):
     if use_gpu:
         assert(torch.cuda.is_available())
 
-    if which_model_netG == 'unet_128':
-        netG = UnetGenerator(input_nc, output_nc, 7, ngf, norm_layer, gpu_ids=gpu_ids)
-    elif which_model_netG == 'unet_256':
-        netG = UnetGenerator(input_nc, output_nc, 8, ngf, norm_layer, gpu_ids=gpu_ids)
-    else:
-        print('Generator model name [%s] is not recognized' % which_model_netG)
-    if len(gpu_ids) > 0:
+    netG = resnetSISR(n_blocks=16)
+
+    if use_gpu:
         netG.cuda()
-    netG.apply(weights_init)
     return netG
 
 

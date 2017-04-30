@@ -19,18 +19,14 @@ class netModel(BaseModel):
         BaseModel.initialize(self, opt)
         self.isTrain = True
         # define tensors
-        self.input_real = self.Tensor(opt.batchSize, opt.input_nc,
-                                   opt.imageSize, opt.imageSize)
-        self.input_fake = self.Tensor(opt.batchSize, opt.output_nc + 1,
-                                   opt.imageSize, opt.imageSize)
-        self.input_mask = self.Tensor(opt.batchSize, opt.output_nc,
-                                   opt.imageSize, opt.imageSize)
-        self.ones = Variable(self.Tensor(opt.batchSize, opt.output_nc,
-                                opt.imageSize, opt.imageSize).fill_(1.))
+        self.input_hr = self.Tensor(opt.batchSize, opt.input_nc,
+                                   opt.hr_height, opt.hr_width)
+        self.input_lr = self.Tensor(opt.batchSize, opt.output_nc + 1,
+                                   opt.lr_height, opt.lr_width)
 
         # load/define networks
-        self.netG = networks.define_G(opt.input_nc + 1, opt.output_nc + 1, opt.ngf,
-                                      opt.which_model_netG, opt.norm, self.gpu_ids)
+        self.netG = networks.define_G(opt.input_nc, opt.output_nc, opt.ngf,
+                                      opt.norm, self.gpu_ids)
 
         if self.isTrain:
             use_sigmoid = opt.no_lsgan
@@ -48,7 +44,7 @@ class netModel(BaseModel):
             self.old_lr = opt.lr
             # define loss functions
             self.criterionGAN = networks.GANLoss(use_lsgan=not opt.no_lsgan, tensor=self.Tensor)
-            self.criterionL1 = torch.nn.L1Loss()
+            self.content_loss = torch.nn.L1Loss()
 
             # initialize optimizers
             self.optimizer_G = torch.optim.Adam(self.netG.parameters(),
@@ -62,58 +58,47 @@ class netModel(BaseModel):
             print('-----------------------------------------------')
 
     def set_input(self, input):
-        input_real = input[0][0]
-        input_f = input[1][0]
-        input_fake = input_f[:,:,:,:128]
-        input_mask = input_f[:,0,:,128:].resize_(32,1,128,128)
-        input_fake = torch.cat([input_fake, input_mask], 1)
+        input_hr = input[0][0]
+        input_lr = input[1][0]
 
-        self.input_real.resize_(input_real.size()).copy_(input_real)
-        self.input_fake.resize_(input_fake.size()).copy_(input_fake)
-        self.input_mask.resize_(input_mask.size()).copy_(input_mask)
+        self.input_hr.resize_(input_hr.size()).copy_(input_hr)
+        self.input_lr.resize_(input_lr.size()).copy_(input_lr)
 
     def forward(self):
-        self.fake_in = Variable(self.input_fake)
-        self.fake_out = self.netG.forward(self.fake_in)
-        self.real_out = Variable(self.input_real)
-        self.mask = Variable(self.input_mask)
+        self.lr = Variable(self.input_lr)
+        self.sr = self.netG.forward(self.lr)
+        self.hr = Variable(self.input_hr)
 
     # no backprop gradients
     def test(self):
-        self.fake_in = Variable(self.input_fake, volatile=True)
-        self.fake_out = self.netG.forward(self.fake_in)
-        self.real_out = Variable(self.input_real, volatile=True)
+        self.lr = Variable(self.input_lr, volatile=True)
+        self.sr = self.netG.forward(self.lr)
+        self.hr = Variable(self.input_hr, volatile=True)
 
     # get image paths
     def get_image_paths(self):
         return self.image_paths
 
     def backward_D(self):
-        # Fake
         # stop backprop to the generator by detaching fake_B
-        self.pred_fake = self.netD.forward(self.fake_out[:,:3,:,:].detach())
+        self.pred_fake = self.netD.forward(self.sr.detach())
         self.loss_D_fake = self.criterionGAN(self.pred_fake, False)
         self.loss_D_fake.backward()
         # Real
-        self.pred_real = self.netD.forward(self.real_out)
+        self.pred_real = self.netD.forward(self.hr)
         self.loss_D_real = self.criterionGAN(self.pred_real, True)
         self.loss_D_real.backward()
         # Combined loss
         self.loss_D = (self.loss_D_fake + self.loss_D_real) * 0.5
-        #self.loss_D.backward()
 
     def backward_G(self):
         # First, G(A) should fake the discriminator
-        pred_fake = self.netD.forward(self.fake_out[:,:3,:,:])
+        pred_fake = self.netD.forward(self.sr)
         self.loss_G_GAN = self.criterionGAN(pred_fake, True)
 
         # Second, G(A) = B
-        #self.loss_G_L1 = self.criterionL1(self.fake_out, self.fake_in) * self.opt.L1lambda
-        self.loss_G_L1_bg = self.criterionL1(self.fake_out[:,:3,:,:] * (torch.cat([self.mask,self.mask,self.mask],1)), self.fake_in[:,:3,:,:] * (torch.cat([self.mask,self.mask,self.mask],1))) * self.opt.L1lambda_bg
-        self.loss_G_L1_fg = self.criterionL1(self.fake_out[:,:3,:,:] * (self.ones - torch.cat([self.mask,self.mask,self.mask],1)), self.fake_in[:,:3,:,:] * (self.ones - torch.cat([self.mask,self.mask,self.mask],1))) * self.opt.L1lambda_fg
-
-        self.loss_G_L1 = self.loss_G_L1_fg + self.loss_G_L1_bg
-        self.loss_G = self.loss_G_GAN + self.loss_G_L1
+        self.loss_G_content = self.content_loss(self.sr, self.hr) * self.opt.L1lambda
+        self.loss_G = self.loss_G_content + self.loss_G_GAN
 
         self.loss_G.backward()
 
@@ -131,7 +116,7 @@ class netModel(BaseModel):
 
     def get_current_errors(self):
         return OrderedDict([('G_GAN', self.loss_G_GAN.data[0]),
-                ('G_L1', self.loss_G_L1.data[0]),
+                ('G_L1', self.loss_G_content.data[0]),
                 ('D_real', self.loss_D_real.data[0]),
                 ('D_fake', self.loss_D_fake.data[0])
         ])
@@ -140,9 +125,9 @@ class netModel(BaseModel):
         #fake_in = util.tensor2im(self.fake_in.data)
         #fake_out = util.tensor2im(self.fake_out.data)
         #real_out = util.tensor2im(self.real_out.data)
-        return OrderedDict([('fake_in', self.fake_in[:,:3,:,:]),
-                            ('fake_out', self.fake_out[:,:3,:,:]),
-                            ('real_out', self.real_out)])
+        return OrderedDict([('fake_in', self.lr),
+                            ('fake_out', self.sr),
+                            ('real_out', self.hr)])
 
     def save(self, label):
         self.save_network(self.netG, 'G', label, self.gpu_ids)
