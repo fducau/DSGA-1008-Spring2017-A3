@@ -20,9 +20,11 @@ class netModel(BaseModel):
         self.isTrain = True
         # define tensors
         self.input_hr = self.Tensor(opt.batchSize, opt.input_nc,
-                                   opt.hr_height, opt.hr_width)
-        self.input_lr = self.Tensor(opt.batchSize, opt.output_nc + 1,
-                                   opt.lr_height, opt.lr_width)
+                                    opt.hr_height, opt.hr_width)
+        self.input_lr = self.Tensor(opt.batchSize, opt.output_nc,
+                                    opt.lr_height, opt.lr_width)
+        self.input_hr_adv = self.Tensor(opt.batchSize, opt.input_nc,
+                                        opt.hr_height, opt.hr_width)
 
         # load/define networks
         self.netG = networks.define_G(opt.input_nc, opt.output_nc, opt.ngf,
@@ -44,7 +46,7 @@ class netModel(BaseModel):
             self.old_lr = opt.lr
             # define loss functions
             self.criterionGAN = networks.GANLoss(use_lsgan=not opt.no_lsgan, tensor=self.Tensor)
-            self.content_loss = torch.nn.L1Loss()
+            self.content_loss = torch.nn.MSELoss()
 
             # initialize optimizers
             self.optimizer_G = torch.optim.Adam(self.netG.parameters(),
@@ -59,21 +61,25 @@ class netModel(BaseModel):
 
     def set_input(self, input):
         input_hr = input[0][0]
-        input_lr = input[1][0]
+        input_hr_adv = input[1][0]
+        input_lr = input[2][0]
 
         self.input_hr.resize_(input_hr.size()).copy_(input_hr)
+        self.input_hr_adv.resize_(input_hr_adv.size()).copy_(input_hr_adv)
         self.input_lr.resize_(input_lr.size()).copy_(input_lr)
 
     def forward(self):
         self.lr = Variable(self.input_lr)
         self.sr = self.netG.forward(self.lr)
         self.hr = Variable(self.input_hr)
+        self.hr_adv = Variable(self.input_hr_adv)
 
     # no backprop gradients
     def test(self):
         self.lr = Variable(self.input_lr, volatile=True)
         self.sr = self.netG.forward(self.lr)
         self.hr = Variable(self.input_hr, volatile=True)
+        self.hr_adv = Variable(self.input_hr_adv, volatile=True)
 
     # get image paths
     def get_image_paths(self):
@@ -85,7 +91,7 @@ class netModel(BaseModel):
         self.loss_D_fake = self.criterionGAN(self.pred_fake, False)
         self.loss_D_fake.backward()
         # Real
-        self.pred_real = self.netD.forward(self.hr)
+        self.pred_real = self.netD.forward(self.hr_adv)
         self.loss_D_real = self.criterionGAN(self.pred_real, True)
         self.loss_D_real.backward()
         # Combined loss
@@ -93,12 +99,12 @@ class netModel(BaseModel):
 
     def backward_G(self):
         # First, G(A) should fake the discriminator
-        pred_fake = self.netD.forward(self.sr)
-        self.loss_G_GAN = self.criterionGAN(pred_fake, True)
+        #pred_fake = self.netD.forward(self.sr)
+        #self.loss_G_GAN = self.criterionGAN(pred_fake, True)
 
         # Second, G(A) = B
-        self.loss_G_content = self.content_loss(self.sr, self.hr) * self.opt.L1lambda
-        self.loss_G = self.loss_G_content + self.loss_G_GAN
+        self.loss_G_content = self.content_loss(self.sr, self.hr)
+        self.loss_G = self.loss_G_content #+ self.loss_G_GAN * self.opt.L1lambda
 
         self.loss_G.backward()
 
@@ -106,20 +112,24 @@ class netModel(BaseModel):
         # st()
         self.forward()
 
-        self.optimizer_D.zero_grad()
-        self.backward_D()
-        self.optimizer_D.step()
+        #self.optimizer_D.zero_grad()
+        #self.backward_D()
+        #self.optimizer_D.step()
 
         self.optimizer_G.zero_grad()
         self.backward_G()
         self.optimizer_G.step()
 
     def get_current_errors(self):
-        return OrderedDict([('G_GAN', self.loss_G_GAN.data[0]),
-                ('G_L1', self.loss_G_content.data[0]),
-                ('D_real', self.loss_D_real.data[0]),
-                ('D_fake', self.loss_D_fake.data[0])
-        ])
+        #return OrderedDict([('G_GAN', self.loss_G_GAN.data[0]),
+        #        ('G_L1', self.loss_G_content.data[0]),
+        #        ('D_real', self.loss_D_real.data[0]),
+        #        ('D_fake', self.loss_D_fake.data[0])
+        #])
+
+        return OrderedDict([('G_L1', self.loss_G_content.data[0]),
+                        ])
+
 
     def get_current_visuals(self):
         #fake_in = util.tensor2im(self.fake_in.data)
@@ -131,7 +141,7 @@ class netModel(BaseModel):
 
     def save(self, label):
         self.save_network(self.netG, 'G', label, self.gpu_ids)
-        self.save_network(self.netD, 'D', label, self.gpu_ids)
+        #self.save_network(self.netD, 'D', label, self.gpu_ids)
 
     def update_learning_rate(self):
         lrd = self.opt.lr / self.opt.niter_decay
