@@ -191,7 +191,7 @@ class NLayerDiscriminator(nn.Module):
         super(NLayerDiscriminator, self).__init__()
         self.gpu_ids = gpu_ids
         # HYPERPARAMETER?
-        kw = 4
+        kw = 2
         sequence = [
             nn.Conv2d(input_nc, ndf, kernel_size=kw, stride=2, padding=2),
             nn.LeakyReLU(0.2, True)
