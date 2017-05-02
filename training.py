@@ -131,6 +131,7 @@ dataset_hr_adv = dset.ImageFolder(root=opt.dataroot_hr_adv,
                                     transforms.ToTensor(),
                                 ]))
 assert dataset_lr
+assert dataset_hr_adv
 dataloader_lr = torch.utils.data.DataLoader(dataset_lr, batch_size=opt.batchSize,
                                               shuffle=False, num_workers=int(opt.workers))
 
@@ -188,74 +189,3 @@ for epoch in range(opt.niter):
             # do checkpointing
             torch.save(model.netG.state_dict(), '%s/netG_epoch_%d.pth' % (opt.outf + opt.exp_name, epoch))
             torch.save(model.netD.state_dict(), '%s/netD_epoch_%d.pth' % (opt.outf + opt.exp_name, epoch))
-'''
-        ############################
-        # (1) Update D network: maximize log(D(x)) + log(1 - D(G(z)))
-        ###########################
-        # train with real
-        netD.zero_grad()
-        real_cpu, _ = data
-        input_fake_cpu, _ = data_fake
-
-        batch_size = real_cpu.size(0)
-
-        input.data.resize_(real_cpu.size()).copy_(real_cpu)
-        label.data.resize_(batch_size).fill_(real_label)
-
-        input_fake.data.resize_(input_fake_cpu.size()).copy_(input_fake_cpu)
-
-        output = netD(input)
-        errD_real = criterion(output, label)
-        errD_real.backward()
-        D_x = output.data.mean()
-
-        # train with fake
-        # noise.data.resize_(batch_size, nz, 1, 1)
-        # noise.data.normal_(0, 1)
-        fake = netG_autoencoder(input_fake)
-        label.data.fill_(fake_label)
-        output = netD(fake.detach())
-        errD_fake = criterion(output, label)
-        errD_fake.backward()
-
-        errD = errD_real + errD_fake
-        D_G_z1 = output.data.mean()
-
-        optimizerD.step()
-
-        ############################
-        # (2) Update G network: maximize log(D(G(z)))
-        ###########################
-        netG_autoencoder.zero_grad()
-        #fake = netG_autoencoder(input_fake)
-
-        label.data.fill_(real_label)  # fake labels are real for generator cost
-        output = netD(fake)
-        errG = criterion(output, label)# + img_similarity_cirterion(fake, input_fake)
-        errG.backward(retain_variables=True)
-        errG_similarity = img_similarity_cirterion(fake, input_fake) * opt.L1lambda
-        errG_similarity.backward()
-        D_G_z2 = output.data.mean()
-        optimizerG_autoencoder.step()
-
-
-        print('[%d/%d][%d/%d] Loss_D: %.4f Loss_G: %.4f D(x): %.4f D(G(z)): %.4f / %.4f L1: %.4f'
-              % (epoch, opt.niter, i, len(dataloader_real),
-                 errD.data[0], errG.data[0], D_x, D_G_z1, D_G_z2, errG_similarity.data[0]))
-        if i % 10000 == 0:
-            vutils.save_image(real_cpu,
-                    '%s/real_samples.png' % opt.outf,
-                    normalize=True)
-            fake = netG_autoencoder(fixed_fake_imgs)
-            vutils.save_image(fake.data,
-                    '%s/fake_samples_epoch_%03d.png' % (opt.outf, epoch),
-                    normalize=True)
-            vutils.save_image(fixed_fake_imgs.data,
-                    '%s/input_samples.png' % opt.outf,
-                    normalize=True)
-
-    if epoch % 10 == 0:
-        # do checkpointing
-        torch.save(netG.state_dict(), '%s/netG_epoch_%d.pth' % (opt.outf, epoch))
-        torch.save(netD.state_dict(), '%s/netD_epoch_%d.pth' % (opt.outf, epoch))
-'''
