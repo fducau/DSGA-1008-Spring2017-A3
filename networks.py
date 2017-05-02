@@ -5,19 +5,6 @@ from torch.autograd import Variable
 import torch.utils.model_zoo as model_zoo
 
 
-# __all__ = ['ResNet', 'resnet18', 'resnet34', 'resnet50', 'resnet101',
-#            'resnet152', 'resnetSISR']
-
-
-# model_urls = {
-#     'resnet18': 'https://download.pytorch.org/models/resnet18-5c106cde.pth',
-#     'resnet34': 'https://download.pytorch.org/models/resnet34-333f7ec4.pth',
-#     'resnet50': 'https://download.pytorch.org/models/resnet50-19c8e357.pth',
-#     'resnet101': 'https://download.pytorch.org/models/resnet101-5d3b4d8f.pth',
-#     'resnet152': 'https://download.pytorch.org/models/resnet152-b121ed2d.pth',
-# }
-
-
 def conv3x3(in_planes, out_planes, stride=1):
     "3x3 convolution with padding"
     return nn.Conv2d(in_planes, out_planes, kernel_size=3, stride=stride,
@@ -95,44 +82,6 @@ class ShuffleBlockSISR(nn.Module):
         out = self.pixelshuffle(out)
         out = self.prelu(out)
         return out
-
-
-# class Bottleneck(nn.Module):
-#     expansion = 4
-
-#     def __init__(self, inplanes, planes, stride=1, downsample=None):
-#         super(Bottleneck, self).__init__()
-#         self.conv1 = nn.Conv2d(inplanes, planes, kernel_size=1, bias=False)
-#         self.bn1 = nn.BatchNorm2d(planes)
-#         self.conv2 = nn.Conv2d(planes, planes, kernel_size=3, stride=stride,
-#                                padding=1, bias=False)
-#         self.bn2 = nn.BatchNorm2d(planes)
-#         self.conv3 = nn.Conv2d(planes, planes * 4, kernel_size=1, bias=False)
-#         self.bn3 = nn.BatchNorm2d(planes * 4)
-#         self.relu = nn.ReLU(inplace=True)
-#         self.downsample = downsample
-#         self.stride = stride
-
-#     def forward(self, x):
-#         residual = x
-
-#         out = self.conv1(x)
-#         out = self.bn1(out)
-#         out = self.relu(out)
-
-#         out = self.conv2(out)
-#         out = self.bn2(out)
-#         out = self.relu(out)
-
-#         out = self.conv3(out)
-#         out = self.bn3(out)
-
-#         if self.downsample is not None:
-#             residual = self.downsample(x)
-
-#         out += residual
-#         out = self.relu(out)
-#         return out
 
 
 class ResNet(nn.Module):
@@ -259,65 +208,6 @@ class resnetSISR(nn.Module):
         return out
 
 
-# def resnet18(pretrained=False, **kwargs):
-#     """Constructs a ResNet-18 model.
-
-#     Args:
-#         pretrained (bool): If True, returns a model pre-trained on ImageNet
-#     """
-#     model = ResNet(BasicBlock, [2, 2, 2, 2], **kwargs)
-#     if pretrained:
-#         model.load_state_dict(model_zoo.load_url(model_urls['resnet18']))
-#     return model
-
-
-# def resnet34(pretrained=False, **kwargs):
-#     """Constructs a ResNet-34 model.
-
-#     Args:
-#         pretrained (bool): If True, returns a model pre-trained on ImageNet
-#     """
-#     model = ResNet(BasicBlock, [3, 4, 6, 3], **kwargs)
-#     if pretrained:
-#         model.load_state_dict(model_zoo.load_url(model_urls['resnet34']))
-#     return model
-
-
-# def resnet50(pretrained=False, **kwargs):
-#     """Constructs a ResNet-50 model.
-
-#     Args:
-#         pretrained (bool): If True, returns a model pre-trained on ImageNet
-#     """
-#     model = ResNet(Bottleneck, [3, 4, 6, 3], **kwargs)
-#     if pretrained:
-#         model.load_state_dict(model_zoo.load_url(model_urls['resnet50']))
-#     return model
-
-
-# def resnet101(pretrained=False, **kwargs):
-#     """Constructs a ResNet-101 model.
-
-#     Args:
-#         pretrained (bool): If True, returns a model pre-trained on ImageNet
-#     """
-#     model = ResNet(Bottleneck, [3, 4, 23, 3], **kwargs)
-#     if pretrained:
-#         model.load_state_dict(model_zoo.load_url(model_urls['resnet101']))
-#     return model
-
-
-# def resnet152(pretrained=False, **kwargs):
-#     """Constructs a ResNet-152 model.
-
-#     Args:
-#         pretrained (bool): If True, returns a model pre-trained on ImageNet
-#     """
-#     model = ResNet(Bottleneck, [3, 8, 36, 3], **kwargs)
-#     if pretrained:
-#         model.load_state_dict(model_zoo.load_url(model_urls['resnet152']))
-#     return model
-
 ###############################################################################
 # Functions
 ###############################################################################
@@ -327,8 +217,6 @@ def define_G(input_nc, output_nc, ngf, norm, gpu_ids=[]):
     use_gpu = len(gpu_ids) > 0
     if norm == 'batch':
         norm_layer = nn.BatchNorm2d
-    elif norm == 'instance':
-        norm_layer = InstanceNormalization
     else:
         print('normalization layer [%s] is not found' % norm)
     if use_gpu:
@@ -419,84 +307,6 @@ class GANLoss(nn.Module):
         return self.loss(input, target_tensor)
 
 
-# Defines the Unet generator.
-# |num_downs|: number of downsamplings in UNet. For example,
-# if |num_downs| == 7, image of size 128x128 will become of size 1x1
-# at the bottleneck
-class UnetGenerator(nn.Module):
-    def __init__(self, input_nc, output_nc, num_downs, ngf,
-                 norm_layer, gpu_ids=[]):
-        super(UnetGenerator, self).__init__()
-        self.gpu_ids = gpu_ids
-
-        # currently support only input_nc == output_nc
-        assert(input_nc == output_nc)
-
-        # construct unet structure
-        unet_block = UnetSkipConnectionBlock(ngf * 8, ngf * 8, innermost=True)
-        for i in range(num_downs - 5):
-            unet_block = UnetSkipConnectionBlock(ngf * 8, ngf * 8, unet_block)
-        unet_block = UnetSkipConnectionBlock(ngf * 4, ngf * 8, unet_block)
-        unet_block = UnetSkipConnectionBlock(ngf * 2, ngf * 4, unet_block)
-        unet_block = UnetSkipConnectionBlock(ngf, ngf * 2, unet_block)
-        unet_block = UnetSkipConnectionBlock(output_nc, ngf, unet_block, outermost=True)
-
-        self.model = unet_block
-
-    def forward(self, input):
-        if isinstance(input.data, torch.cuda.FloatTensor) and self.gpu_ids:
-            #return nn.parallel.data_parallel(self.model, input, self.gpu_ids)
-            return self.model(input)
-        else:
-            return self.model(input)
-
-# Defines the submodule with skip connection.
-# X -------------------identity---------------------- X
-#   |-- downsampling -- |submodule| -- upsampling --|
-class UnetSkipConnectionBlock(nn.Module):
-    def __init__(self, outer_nc, inner_nc,
-                 submodule=None, outermost=False, innermost=False):
-        super(UnetSkipConnectionBlock, self).__init__()
-        self.outermost = outermost
-
-        downconv = nn.Conv2d(outer_nc, inner_nc, kernel_size=4,
-                             stride=2, padding=1)
-        downrelu = nn.LeakyReLU(0.2, True)
-        downnorm = nn.BatchNorm2d(inner_nc)
-        uprelu = nn.ReLU(True)
-        upnorm = nn.BatchNorm2d(outer_nc)
-
-        if outermost:
-            upconv = nn.ConvTranspose2d(inner_nc * 2, outer_nc,
-                                        kernel_size=4, stride=2,
-                                        padding=1)
-            down = [downconv]
-            up = [uprelu, upconv, nn.Tanh()]
-            model = down + [submodule] + up
-        elif innermost:
-            upconv = nn.ConvTranspose2d(inner_nc, outer_nc,
-                                        kernel_size=4, stride=2,
-                                        padding=1)
-            down = [downrelu, downconv]
-            up = [uprelu, upconv, upnorm]
-            model = down + up
-        else:
-            upconv = nn.ConvTranspose2d(inner_nc * 2, outer_nc,
-                                        kernel_size=4, stride=2,
-                                        padding=1)
-            down = [downrelu, downconv, downnorm]
-            up = [uprelu, upconv, upnorm]
-            model = down + [submodule] + up
-
-        self.model = nn.Sequential(*model)
-
-    def forward(self, x):
-        if self.outermost:
-            return self.model(x)
-        else:
-            return torch.cat([self.model(x), x], 1)
-
-
 # Defines the PatchGAN discriminator with the specified arguments.
 class NLayerDiscriminator(nn.Module):
     def __init__(self, input_nc, ndf=64, n_layers=3, use_sigmoid=False, gpu_ids=[]):
@@ -545,138 +355,4 @@ class NLayerDiscriminator(nn.Module):
             return self.model(input)
         else:
             return self.model(input)
-
-
-class InstanceNormalization(torch.nn.Module):
-    """InstanceNormalization
-    Improves convergence of neural-style.
-    ref: https://arxiv.org/pdf/1607.08022.pdf
-    """
-
-    def __init__(self, dim, eps=1e-5):
-        super(InstanceNormalization, self).__init__()
-        self.weight = nn.Parameter(torch.FloatTensor(dim))
-        self.bias = nn.Parameter(torch.FloatTensor(dim))
-        self.eps = eps
-        self._reset_parameters()
-
-    def _reset_parameters(self):
-        self.weight.data.uniform_()
-        self.bias.data.zero_()
-
-    def forward(self, x):
-        n = x.size(2) * x.size(3)
-        t = x.view(x.size(0), x.size(1), n)
-        mean = torch.mean(t, 2).unsqueeze(2).expand_as(x)
-        # Calculate the biased var. torch.var returns unbiased var
-        var = torch.var(t, 2).unsqueeze(2).expand_as(x) * ((n - 1) / float(n))
-        scale_broadcast = self.weight.unsqueeze(1).unsqueeze(1).unsqueeze(0)
-        scale_broadcast = scale_broadcast.expand_as(x)
-        shift_broadcast = self.bias.unsqueeze(1).unsqueeze(1).unsqueeze(0)
-        shift_broadcast = shift_broadcast.expand_as(x)
-        out = (x - mean) / torch.sqrt(var + self.eps)
-        out = out * scale_broadcast + shift_broadcast
-        return out
-
-
-class _netG(nn.Module):
-    def __init__(self, ngpu):
-        super(_netG, self).__init__()
-        self.ngpu = ngpu
-        self.main = nn.Sequential(
-            # input is Z, going into a convolution
-            nn.ConvTranspose2d(nz, ngf * 8, 4, 1, 0, bias=False),
-            nn.BatchNorm2d(ngf * 8),
-            nn.ReLU(True),
-            # state size. (ngf*8) x 4 x 4
-            nn.ConvTranspose2d(ngf * 8, ngf * 4, 4, 2, 1, bias=False),
-            nn.BatchNorm2d(ngf * 4),
-            nn.ReLU(True),
-            # state size. (ngf*4) x 8 x 8
-            nn.ConvTranspose2d(ngf * 4, ngf * 2, 4, 2, 1, bias=False),
-            nn.BatchNorm2d(ngf * 2),
-            nn.ReLU(True),
-            # state size. (ngf*2) x 16 x 16
-            nn.ConvTranspose2d(ngf * 2, ngf, 4, 2, 1, bias=False),
-            nn.BatchNorm2d(ngf),
-            nn.ReLU(True),
-            # state size. (ngf) x 32 x 32
-            nn.ConvTranspose2d(ngf, nc, 4, 2, 1, bias=False),
-            nn.Tanh()
-            # state size. (nc) x 64 x 64
-        )
-
-    def forward(self, input):
-        if isinstance(input.data, torch.cuda.FloatTensor) and self.ngpu > 1:
-            output = nn.parallel.data_parallel(self.main, input, range(self.ngpu))
-        else:
-            output = self.main(input)
-        return output
-
-
-class _netG_autoencoder(nn.Module):
-    def __init__(self, ngpu):
-        super(_netG_autoencoder, self).__init__()
-        self.ngpu = ngpu
-        self.main = nn.Sequential(
-            # ENCODER
-            # input is (nc) x 64 x 64
-            # class torch.nn.Conv2d(in_channels, out_channels, kernel_size, stride=1, padding=0, dilation=1, groups=1, bias=True)
-            nn.Conv2d(nc, ngf, 4, 2, 1, bias=False),
-            nn.LeakyReLU(0.2, inplace=True),
-            # state size. (ngf) x 32 x 32
-            nn.Conv2d(in_channels=ngf, out_channels=ngf * 2, kernel_size=4, stride=2, padding=1, bias=False),
-            nn.BatchNorm2d(ngf * 2),
-            nn.LeakyReLU(0.2, inplace=True),
-            # state size. (ngf*2) x 16 x 16
-            nn.Conv2d(in_channels=ngf * 2, out_channels=ngf * 4, kernel_size=4, stride=2, padding=1, bias=False),
-            nn.BatchNorm2d(ngf * 4),
-            nn.LeakyReLU(0.2, inplace=True),
-            # state size. (ngf*4) x 8 x 8
-            nn.Conv2d(in_channels=ngf * 4, out_channels=ngf * 8, kernel_size=4, stride=2, padding=1, bias=False),
-            nn.BatchNorm2d(ngf * 8),
-            nn.LeakyReLU(0.2, inplace=True),
-            # state size. (ngf*8) x 4 x 4
-            nn.Conv2d(in_channels=ngf * 8, out_channels=ngf * 8, kernel_size=4, stride=2, padding=1, bias=False),
-            nn.BatchNorm2d(ngf * 8),
-            nn.LeakyReLU(0.2, inplace=True),
-            # state size. (ngf*8) x 2 x 2
-            nn.Conv2d(in_channels=ngf * 8, out_channels=ngf * 8, kernel_size=4, stride=2, padding=1, bias=False),
-            nn.BatchNorm2d(ngf * 8),
-            nn.LeakyReLU(0.2, inplace=True),
-            # state size. (ngf*8) x 1 x 1
-
-            # DECODER
-            # class torch.nn.ConvTranspose2d(in_channels, out_channels, kernel_size, stride=1, padding=0, output_padding=0, groups=1, bias=True)
-            nn.ConvTranspose2d(ngf * 8, ngf * 8, 4, 2, 1, bias=False),
-            nn.BatchNorm2d(ngf * 8),
-            nn.ReLU(True),
-            # state size. (ngf*8) x 2 x 2
-            nn.ConvTranspose2d(ngf * 8, ngf * 8, 4, 2, 1, bias=False),
-            nn.BatchNorm2d(ngf * 8),
-            nn.ReLU(True),
-            # state size. (ngf*8) x 4 x 4
-            nn.ConvTranspose2d(ngf * 8, ngf * 4, 4, 2, 1, bias=False),
-            nn.BatchNorm2d(ngf * 4),
-            nn.ReLU(True),
-            # state size. (ngf*4) x 8 x 8
-            nn.ConvTranspose2d(ngf * 4, ngf * 2, 4, 2, 1, bias=False),
-            nn.BatchNorm2d(ngf * 2),
-            nn.ReLU(True),
-            # state size. (ngf*2) x 16 x 16
-            nn.ConvTranspose2d(ngf * 2, ngf, 4, 2, 1, bias=False),
-            nn.BatchNorm2d(ngf),
-            nn.ReLU(True),
-            # state size. (ngf) x 32 x 32
-            nn.ConvTranspose2d(ngf, nc, 4, 2, 1, bias=False),
-            nn.Tanh()
-            # state size. (nc) x 64 x 64
-        )
-
-    def forward(self, input):
-        if isinstance(input.data, torch.cuda.FloatTensor) and self.ngpu > 1:
-            output = nn.parallel.data_parallel(self.main, input, range(self.ngpu))
-        else:
-            output = self.main(input)
-        return output
 
