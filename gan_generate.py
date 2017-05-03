@@ -97,11 +97,19 @@ vutils.save_image(
     data_hr[0],
     '%s/real_test_samples.png' % (opt.outf + opt.exp_name),
     nrow=5, normalize=True)
+    
+    print('Original HR images saved to %s/real_test_samples.png' % (opt.outf + opt.exp_name))
 vutils.save_image(
     visuals['fake_out'].data,
     '%s/fake_test_samples_epoch%s.png' % (opt.outf + opt.exp_name, opt.which_epoch),
     nrow=5, normalize=True)
+
+    print('Super-Resolved images saved to %s/fake_test_samples_epoch%s.png' % (opt.outf + opt.exp_name, opt.which_epoch))
+
 vutils.save_image(
     visuals['fake_in'].data,
     '%s/input_test_samples.png' % (opt.outf + opt.exp_name),
     nrow=5, normalize=True)
+
+    print('Input LR images saved to %s/input_test_samples.png' % (opt.outf + opt.exp_name))
+
