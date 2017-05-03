@@ -1,3 +1,4 @@
+import os
 import numpy as np
 import torch
 import os
@@ -5,9 +6,6 @@ from collections import OrderedDict
 from pdb import set_trace as st
 from torch.autograd import Variable
 import networks
-import util
-import os
-import torch
 from pdb import set_trace as st
 
 
@@ -70,7 +68,7 @@ class netModel(BaseModel):
 
     def initialize(self, opt):
         BaseModel.initialize(self, opt)
-        self.isTrain = True
+        self.isTrain = opt.isTrain
         # define tensors
         self.input_hr = self.Tensor(opt.batchSize, opt.input_nc,
                                     opt.hr_height, opt.hr_width)
@@ -89,10 +87,10 @@ class netModel(BaseModel):
                                          opt.which_model_netD,
                                          opt.n_layers_D, use_sigmoid, self.gpu_ids)
 
-        #if not self.isTrain or opt.continue_train:
-        #    self.load_network(self.netG, 'G', opt.which_epoch)
-        #    if self.isTrain:
-        #        self.load_network(self.netD, 'D', opt.which_epoch)
+        if not self.isTrain or opt.continue_train:
+            self.load_network(self.netG, 'G', opt.which_epoch)
+            if self.isTrain:
+                self.load_network(self.netD, 'D', opt.which_epoch)
 
         if self.isTrain:
             # self.fake_AB_pool = ImagePool(opt.pool_size)
@@ -114,12 +112,14 @@ class netModel(BaseModel):
 
     def set_input(self, input):
         input_hr = input[0][0]
-        input_hr_adv = input[1][0]
-        input_lr = input[2][0]
+        input_lr = input[1][0]
 
         self.input_hr.resize_(input_hr.size()).copy_(input_hr)
-        self.input_hr_adv.resize_(input_hr_adv.size()).copy_(input_hr_adv)
         self.input_lr.resize_(input_lr.size()).copy_(input_lr)
+
+        if self.isTrain:
+            input_hr_adv = input[2][0]
+            self.input_hr_adv.resize_(input_hr_adv.size()).copy_(input_hr_adv)
 
     def forward(self):
         self.lr = Variable(self.input_lr)
@@ -132,7 +132,7 @@ class netModel(BaseModel):
         self.lr = Variable(self.input_lr, volatile=True)
         self.sr = self.netG.forward(self.lr)
         self.hr = Variable(self.input_hr, volatile=True)
-        self.hr_adv = Variable(self.input_hr_adv, volatile=True)
+        # self.hr_adv = Variable(self.input_hr_adv, volatile=True)
 
     # get image paths
     def get_image_paths(self):
@@ -185,9 +185,6 @@ class netModel(BaseModel):
 
 
     def get_current_visuals(self):
-        #fake_in = util.tensor2im(self.fake_in.data)
-        #fake_out = util.tensor2im(self.fake_out.data)
-        #real_out = util.tensor2im(self.real_out.data)
         return OrderedDict([('fake_in', self.lr),
                             ('fake_out', self.sr),
                             ('real_out', self.hr)])
