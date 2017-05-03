@@ -51,8 +51,6 @@ f.close()
 #opt.exp_name = opt.exp_name_reload
 opt.batchSize=50
 
-print('test_time:', opt)
-
 dataset_hr = dset.ImageFolder(
     root=opt.dataroot_hr,
     transform=transforms.Compose([

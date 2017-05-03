@@ -69,7 +69,6 @@ parser.add_argument('--continue_train', action='store_true', help='set to true w
 
 opt = parser.parse_args()
 opt.no_lsgan = True
-print(opt)
 
 try:
     os.makedirs(opt.outf)
