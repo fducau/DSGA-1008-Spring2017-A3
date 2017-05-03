@@ -11,8 +11,8 @@ training.parser.add_argument('--exp_name_reload', help='name of experiment to re
 training.parser.add_argument('--which_epoch', help='name of experiment to reload', default='1')
 
 opt = training.parser.parse_args()
-opt.dataroot_lr = opt.dataroot_lr_test
 opt.dataroot_hr = opt.dataroot_hr_test
+opt.dataroot_lr = opt.dataroot_lr_test
 opt.isTrain = False
 
 print('test_time:', opt)
@@ -49,19 +49,18 @@ dataloader_lr = torch.utils.data.DataLoader(
     shuffle=False,
     num_workers=int(opt.workers))
 
-model = netModel()
-model.initialize(opt)
-
 # Get one batch from each dataloader
 data_hr = iter(dataloader_hr).next()
 data_lr = iter(dataloader_lr).next()
+
+model = netModel()
+model.initialize(opt)
 
 model.set_input((data_hr, data_lr))
 model.test()
 visuals = model.get_current_visuals()
 
 vutils.save_image(
-    #visuals['real_out'].data,
     data_hr,
     '%s/real_test_samples.png' % (opt.outf + opt.exp_name),
     normalize=True)
