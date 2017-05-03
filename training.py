@@ -76,6 +76,10 @@ try:
 except OSError:
     pass
 
+# Create output folder
+if not os.path.isdir(opt.outf + opt.exp_name):
+    os.mkdir(opt.outf + opt.exp_name)
+
 if opt.manualSeed is None:
     opt.manualSeed = random.randint(1, 10000)
 print("Random Seed: ", opt.manualSeed)
@@ -124,11 +128,6 @@ if __name__ == '__main__':
     model.initialize(opt)
     print("model was created")
     # Add visualizer?
-
-    # Create output folder
-    if not os.path.isdir(opt.outf + opt.exp_name):
-        os.mkdir(opt.outf + opt.exp_name)
-
 
     total_steps = 0
     for epoch in range(opt.niter):
