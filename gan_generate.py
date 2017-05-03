@@ -61,7 +61,8 @@ model.test()
 visuals = model.get_current_visuals()
 
 vutils.save_image(
-    visuals['real_out'].data,
+    #visuals['real_out'].data,
+    data_hr,
     '%s/real_test_samples.png' % (opt.outf + opt.exp_name),
     normalize=True)
 vutils.save_image(
