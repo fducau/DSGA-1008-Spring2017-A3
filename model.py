@@ -17,7 +17,7 @@ class BaseModel():
         self.opt = opt
         self.gpu_ids = opt.gpu_ids
         self.Tensor = torch.cuda.FloatTensor if self.gpu_ids else torch.Tensor
-        self.save_dir = opt.outf
+        self.save_dir = opt.outf + opt.exp_name
 
     def set_input(self, input):
         self.input = input
@@ -54,7 +54,7 @@ class BaseModel():
 
     # helper loading function that can be used by subclasses
     def load_network(self, network, network_label, epoch_label):
-        save_filename = '%s_net_%s.pth' % (epoch_label, network_label)
+        save_filename = 'net{}_epoch_{}.pth'.format(network_label, epoch_label)
         save_path = os.path.join(self.save_dir, save_filename)
         network.load_state_dict(torch.load(save_path))
 
