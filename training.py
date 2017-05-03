@@ -41,16 +41,15 @@ parser.add_argument('--hr_height', type=int, default=220, help='the height of th
 parser.add_argument('--lr_width', type=int, default=45, help='the width of the LR input image to network')
 parser.add_argument('--lr_height', type=int, default=55, help='the height of the LR input image to network')
 
-
 parser.add_argument('--nz', type=int, default=100, help='size of the latent z vector')
 parser.add_argument('--ngf', type=int, default=64, help='Number of generator filters in first conv layer')
 parser.add_argument('--ndf', type=int, default=64, help='# of discrim filters in first conv layer')
 parser.add_argument('--niter', type=int, default=100, help='number of epochs to train for')
 parser.add_argument('--lr', type=float, default=0.0002, help='learning rate, default=0.0002')
 parser.add_argument('--beta1', type=float, default=0.9, help='beta1 for adam. default=0.5')
-parser.add_argument('--L1lambda', type=float,default=0.001, help='Loss in generator')
+parser.add_argument('--L1lambda', type=float, default=0.001, help='Loss in generator')
 
-parser.add_argument('--cuda', action='store_true', help='enables cuda')
+parser.add_argument('--cuda', action='store_true', help='enables cuda', default=True)
 parser.add_argument('--ngpu', type=int, default=1, help='number of GPUs to use')
 parser.add_argument('--netG', default='', help="path to netG (to continue training)")
 parser.add_argument('--netD', default='', help="path to netD (to continue training)")
@@ -66,10 +65,10 @@ parser.add_argument('--n_layers_D', type=int, default=3, help='only used if whic
 parser.add_argument('--display_freq', type=int, default=100, help='Save images frequency')
 parser.add_argument('--print_freq', type=int, default=10, help='Screen output frequency')
 parser.add_argument('--isTrain', action='store_true', help='set to true when it is training', default=True)
+parser.add_argument('--continue_train', action='store_true', help='set to true when it should continue training', default=False)
 
 opt = parser.parse_args()
 opt.no_lsgan = True
-opt.cuda = False
 print(opt)
 
 try:
