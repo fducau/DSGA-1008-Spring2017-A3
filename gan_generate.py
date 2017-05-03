@@ -10,8 +10,8 @@ import zipfile
 
 training.parser.add_argument('--dataroot_hr_test', help='path to hr test dataset', default='./data/img_align_celeba180x220_test/')
 training.parser.add_argument('--dataroot_lr_test', help='path to lr test dataset', default='./data/img_align_celeba55x45_test')
-training.parser.add_argument('--exp_name_reload', help='name of experiment to reload', default='7_lambda0-1_nlayers3_kw2_accuracylimits')
-training.parser.add_argument('--which_epoch', help='name of experiment to reload', default='7')
+training.parser.add_argument('--exp_name_reload', help='name of experiment to reload', default='test')
+training.parser.add_argument('--which_epoch', help='name of experiment to reload', default='9')
 
 opt = training.parser.parse_args()
 opt.dataroot_hr = opt.dataroot_hr_test
@@ -42,13 +42,13 @@ zip_ref.close()
 print('Retrieving trained Generator')
 response = urllib2.urlopen('https://s3.amazonaws.com/emrbucket-fnd212/DL_HW/SISR/7_lambda0-1_nlayers3_kw2_accuracylimits/netG_epoch_9.pth')
 saved_model = response.read()
-f = open(opt.outf + opt.exp_name + '/netG_epoch_9.pth', 'wb')
+f = open(opt.outf + opt.exp_name_reload + '/netG_epoch_9.pth', 'wb')
 f.write(saved_model)
 f.close()
 
 
 # TODO check if downloading model
-opt.exp_name = opt.exp_name_reload
+#opt.exp_name = opt.exp_name_reload
 opt.batchSize=50
 
 print('test_time:', opt)
