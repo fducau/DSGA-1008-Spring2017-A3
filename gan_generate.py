@@ -42,7 +42,7 @@ assert dataset_lr
 dataloader_lr = torch.utils.data.DataLoader(
     dataset_lr,
     batch_size=opt.batchSize,
-    shuffle=True,
+    shuffle=False,
     num_workers=int(opt.workers))
 
 model = netModel()
@@ -50,7 +50,7 @@ model.initialize(opt)
 
 # Get one batch from each dataloader
 data_lr = iter(dataloader_lr).next()
-data_hr = iter(dataloader_hr).net()
+data_hr = iter(dataloader_hr).next()
 
 model.set_input((data_hr, data_lr))
 model.test()
