@@ -42,7 +42,7 @@ assert dataset_lr
 dataloader_lr = torch.utils.data.DataLoader(
     dataset_lr,
     batch_size=opt.batchSize,
-    shuffle=True,
+    shuffle=False,
     num_workers=int(opt.workers))
 
 model = netModel()
