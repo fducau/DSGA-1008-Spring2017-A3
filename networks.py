@@ -1,8 +1,212 @@
+import math
 import torch
 import torch.nn as nn
 from torch.autograd import Variable
-from pdb import set_trace as st
-from resnet import *
+import torch.utils.model_zoo as model_zoo
+
+
+def conv3x3(in_planes, out_planes, stride=1):
+    "3x3 convolution with padding"
+    return nn.Conv2d(in_planes, out_planes, kernel_size=3, stride=stride,
+                     padding=1, bias=False)
+
+
+class BasicBlock(nn.Module):
+    expansion = 1
+
+    def __init__(self, in_planes, planes, stride=1):
+        super(BasicBlock, self).__init__()
+        self.conv1 = conv3x3(in_planes, planes, stride)
+        self.bn1 = nn.BatchNorm2d(planes)
+        self.conv2 = conv3x3(planes, planes)
+        self.bn2 = nn.BatchNorm2d(planes)
+
+        self.shortcut = nn.Sequential()
+        if stride != 1 or in_planes != self.expansion*planes:
+            self.shortcut = nn.Sequential(
+                nn.Conv2d(in_planes, self.expansion*planes, kernel_size=1, stride=stride, bias=False),
+                nn.BatchNorm2d(self.expansion*planes)
+            )
+
+    def forward(self, x):
+        out = F.relu(self.bn1(self.conv1(x)))
+        out = F.relu(self.bn2(self.conv2(out)))
+        out += self.shortcut(x) if self.shortcut else x
+        out = F.relu(out)
+        return out
+
+
+class BasicBlockSISR(nn.Module):
+    expansion = 1
+
+    def __init__(self, inplanes, planes, stride=1, downsample=None):
+        super(BasicBlockSISR, self).__init__()
+        self.conv1 = conv3x3(inplanes, planes, stride)
+        self.bn1 = nn.BatchNorm2d(planes)
+        self.prelu = nn.PReLU()
+        self.conv2 = conv3x3(planes, planes)
+        self.bn2 = nn.BatchNorm2d(planes)
+        self.downsample = downsample
+        self.stride = stride
+
+    def forward(self, x):
+        residual = x
+
+        out = self.conv1(x)
+        out = self.bn1(out)
+        out = self.prelu(out)
+
+        out = self.conv2(out)
+        out = self.bn2(out)
+
+        if self.downsample is not None:
+            residual = self.downsample(x)
+
+        out = out + residual
+
+        return out
+
+
+class ShuffleBlockSISR(nn.Module):
+    expansion = 1
+
+    def __init__(self, inplanes, stride=1):
+        super(ShuffleBlockSISR, self).__init__()
+
+        self.conv = conv3x3(inplanes, 256, stride=1)
+        self.pixelshuffle = nn.PixelShuffle(2)
+        self.prelu = nn.PReLU()
+
+    def forward(self, x):
+        out = self.conv(x)
+        out = self.pixelshuffle(out)
+        out = self.prelu(out)
+        return out
+
+
+class ResNet(nn.Module):
+
+    def __init__(self, block, layers, num_classes=1000):
+        self.inplanes = 64
+        super(ResNet, self).__init__()
+        self.conv1 = nn.Conv2d(3, 64, kernel_size=7, stride=2, padding=3,
+                               bias=False)
+        self.bn1 = nn.BatchNorm2d(64)
+        self.relu = nn.ReLU(inplace=True)
+        self.maxpool = nn.MaxPool2d(kernel_size=3, stride=2, padding=1)
+        self.layer1 = self._make_layer(block, 64, layers[0])
+        self.layer2 = self._make_layer(block, 128, layers[1], stride=2)
+        self.layer3 = self._make_layer(block, 256, layers[2], stride=2)
+        self.layer4 = self._make_layer(block, 512, layers[3], stride=2)
+        self.avgpool = nn.AvgPool2d(7)
+        self.fc = nn.Linear(512 * block.expansion, num_classes)
+
+        for m in self.modules():
+            if isinstance(m, nn.Conv2d):
+                n = m.kernel_size[0] * m.kernel_size[1] * m.out_channels
+                m.weight.data.normal_(0, math.sqrt(2. / n))
+            elif isinstance(m, nn.BatchNorm2d):
+                m.weight.data.fill_(1)
+                m.bias.data.zero_()
+
+    def _make_layer(self, block, planes, blocks, stride=1):
+        downsample = None
+        if stride != 1 or self.inplanes != planes * block.expansion:
+            downsample = nn.Sequential(
+                nn.Conv2d(self.inplanes, planes * block.expansion,
+                          kernel_size=1, stride=stride, bias=False),
+                nn.BatchNorm2d(planes * block.expansion),
+            )
+
+        layers = []
+        layers.append(block(self.inplanes, planes, stride, downsample))
+        self.inplanes = planes * block.expansion
+        for i in range(1, blocks):
+            layers.append(block(self.inplanes, planes))
+
+        return nn.Sequential(*layers)
+
+    def forward(self, x):
+        x = self.conv1(x)
+        x = self.bn1(x)
+        x = self.relu(x)
+        x = self.maxpool(x)
+
+        x = self.layer1(x)
+        x = self.layer2(x)
+        x = self.layer3(x)
+        x = self.layer4(x)
+
+        x = self.avgpool(x)
+        x = x.view(x.size(0), -1)
+        x = self.fc(x)
+
+        return x
+
+class resnetSISR(nn.Module):
+
+    def __init__(self, n_blocks):
+
+        self.inplanes = 64
+        super(resnetSISR, self).__init__()
+
+        self.conv1 = nn.Conv2d(3, 64, kernel_size=9, stride=1, padding=4,
+                               bias=False)
+        self.prelu = nn.PReLU()
+        self.bn1 = nn.BatchNorm2d(64)
+        self.layer1 = self._make_layer(BasicBlockSISR, 64, n_blocks, stride=1)
+        self.conv2 = conv3x3(self.inplanes, 64, stride=1)
+
+        self.out_layer = self._make_out_layer(ShuffleBlockSISR, 2)
+        self.conv3 = nn.Conv2d(64, 3, kernel_size=9, stride=1, padding=4, bias=False)
+
+        for m in self.modules():
+            if isinstance(m, nn.Conv2d):
+                n = m.kernel_size[0] * m.kernel_size[1] * m.out_channels
+                m.weight.data.normal_(0, math.sqrt(2. / n))
+            elif isinstance(m, nn.BatchNorm2d):
+                m.weight.data.fill_(1)
+                m.bias.data.zero_()
+
+    def _make_layer(self, block, planes, n_blocks, stride=1):
+        downsample = None
+        if stride != 1 or self.inplanes != planes * block.expansion:
+            downsample = nn.Sequential(
+                nn.Conv2d(self.inplanes, planes * block.expansion,
+                          kernel_size=1, stride=stride, bias=False),
+                nn.BatchNorm2d(planes * block.expansion),
+            )
+
+        layers = []
+        layers.append(block(self.inplanes, planes, stride, downsample))
+        self.inplanes = planes * block.expansion
+        for i in range(1, n_blocks):
+            layers.append(block(self.inplanes, planes))
+
+        return nn.Sequential(*layers)
+
+    def _make_out_layer(self, block, n_blocks):
+        layers = []
+        layers.append(block(self.inplanes))
+        for i in range(1, n_blocks):
+            layers.append(block(self.inplanes))
+
+        return nn.Sequential(*layers)
+
+    def forward(self, x):
+        out = self.conv1(x)
+        out = self.prelu(out)
+
+        residual = self.layer1(out)
+        residual = self.conv2(residual)
+        residual = self.bn1(residual)
+
+        out = out + residual
+        out = self.out_layer(out)
+        out = self.conv3(out)
+        out = nn.functional.tanh(out)
+        return out
+
 
 ###############################################################################
 # Functions
@@ -13,8 +217,6 @@ def define_G(input_nc, output_nc, ngf, norm, gpu_ids=[]):
     use_gpu = len(gpu_ids) > 0
     if norm == 'batch':
         norm_layer = nn.BatchNorm2d
-    elif norm == 'instance':
-        norm_layer = InstanceNormalization
     else:
         print('normalization layer [%s] is not found' % norm)
     if use_gpu:
@@ -105,86 +307,6 @@ class GANLoss(nn.Module):
         return self.loss(input, target_tensor)
 
 
-# Defines the Unet generator.
-# |num_downs|: number of downsamplings in UNet. For example,
-# if |num_downs| == 7, image of size 128x128 will become of size 1x1
-# at the bottleneck
-class UnetGenerator(nn.Module):
-    def __init__(self, input_nc, output_nc, num_downs, ngf,
-                 norm_layer, gpu_ids=[]):
-        super(UnetGenerator, self).__init__()
-        self.gpu_ids = gpu_ids
-
-        # currently support only input_nc == output_nc
-        assert(input_nc == output_nc)
-
-        # construct unet structure
-        unet_block = UnetSkipConnectionBlock(ngf * 8, ngf * 8, innermost=True)
-        for i in range(num_downs - 5):
-            unet_block = UnetSkipConnectionBlock(ngf * 8, ngf * 8, unet_block)
-        unet_block = UnetSkipConnectionBlock(ngf * 4, ngf * 8, unet_block)
-        unet_block = UnetSkipConnectionBlock(ngf * 2, ngf * 4, unet_block)
-        unet_block = UnetSkipConnectionBlock(ngf, ngf * 2, unet_block)
-        unet_block = UnetSkipConnectionBlock(output_nc, ngf, unet_block, outermost=True)
-
-        self.model = unet_block
-
-    def forward(self, input):
-        if isinstance(input.data, torch.cuda.FloatTensor) and self.gpu_ids:
-            #return nn.parallel.data_parallel(self.model, input, self.gpu_ids)
-            return self.model(input)
-        else:
-            return self.model(input)
-
-# Defines the submodule with skip connection.
-# X -------------------identity---------------------- X
-#   |-- downsampling -- |submodule| -- upsampling --|
-class UnetSkipConnectionBlock(nn.Module):
-    def __init__(self, outer_nc, inner_nc,
-                 submodule=None, outermost=False, innermost=False):
-        super(UnetSkipConnectionBlock, self).__init__()
-        self.outermost = outermost
-
-        downconv = nn.Conv2d(outer_nc, inner_nc, kernel_size=4,
-                             stride=2, padding=1)
-        downrelu = nn.LeakyReLU(0.2, True)
-        downnorm = nn.BatchNorm2d(inner_nc)
-        uprelu = nn.ReLU(True)
-        upnorm = nn.BatchNorm2d(outer_nc)
-
-        if outermost:
-            upconv = nn.ConvTranspose2d(inner_nc * 2, outer_nc,
-                                        kernel_size=4, stride=2,
-                                        padding=1)
-            down = [downconv]
-            up = [uprelu, upconv, nn.Tanh()]
-            model = down + [submodule] + up
-        elif innermost:
-            upconv = nn.ConvTranspose2d(inner_nc, outer_nc,
-                                        kernel_size=4, stride=2,
-                                        padding=1)
-            down = [downrelu, downconv]
-            up = [uprelu, upconv, upnorm]
-            model = down + up
-        else:
-            upconv = nn.ConvTranspose2d(inner_nc * 2, outer_nc,
-                                        kernel_size=4, stride=2,
-                                        padding=1)
-            down = [downrelu, downconv, downnorm]
-            up = [uprelu, upconv, upnorm]
-            model = down + [submodule] + up
-
-        self.model = nn.Sequential(*model)
-
-    def forward(self, x):
-        if self.outermost:
-            return self.model(x)
-        else:
-            return torch.cat([self.model(x), x], 1)
-
-
-
-
 # Defines the PatchGAN discriminator with the specified arguments.
 class NLayerDiscriminator(nn.Module):
     def __init__(self, input_nc, ndf=64, n_layers=3, use_sigmoid=False, gpu_ids=[]):
@@ -233,138 +355,4 @@ class NLayerDiscriminator(nn.Module):
             return self.model(input)
         else:
             return self.model(input)
-
-
-class InstanceNormalization(torch.nn.Module):
-    """InstanceNormalization
-    Improves convergence of neural-style.
-    ref: https://arxiv.org/pdf/1607.08022.pdf
-    """
-
-    def __init__(self, dim, eps=1e-5):
-        super(InstanceNormalization, self).__init__()
-        self.weight = nn.Parameter(torch.FloatTensor(dim))
-        self.bias = nn.Parameter(torch.FloatTensor(dim))
-        self.eps = eps
-        self._reset_parameters()
-
-    def _reset_parameters(self):
-        self.weight.data.uniform_()
-        self.bias.data.zero_()
-
-    def forward(self, x):
-        n = x.size(2) * x.size(3)
-        t = x.view(x.size(0), x.size(1), n)
-        mean = torch.mean(t, 2).unsqueeze(2).expand_as(x)
-        # Calculate the biased var. torch.var returns unbiased var
-        var = torch.var(t, 2).unsqueeze(2).expand_as(x) * ((n - 1) / float(n))
-        scale_broadcast = self.weight.unsqueeze(1).unsqueeze(1).unsqueeze(0)
-        scale_broadcast = scale_broadcast.expand_as(x)
-        shift_broadcast = self.bias.unsqueeze(1).unsqueeze(1).unsqueeze(0)
-        shift_broadcast = shift_broadcast.expand_as(x)
-        out = (x - mean) / torch.sqrt(var + self.eps)
-        out = out * scale_broadcast + shift_broadcast
-        return out
-
-
-class _netG(nn.Module):
-    def __init__(self, ngpu):
-        super(_netG, self).__init__()
-        self.ngpu = ngpu
-        self.main = nn.Sequential(
-            # input is Z, going into a convolution
-            nn.ConvTranspose2d(nz, ngf * 8, 4, 1, 0, bias=False),
-            nn.BatchNorm2d(ngf * 8),
-            nn.ReLU(True),
-            # state size. (ngf*8) x 4 x 4
-            nn.ConvTranspose2d(ngf * 8, ngf * 4, 4, 2, 1, bias=False),
-            nn.BatchNorm2d(ngf * 4),
-            nn.ReLU(True),
-            # state size. (ngf*4) x 8 x 8
-            nn.ConvTranspose2d(ngf * 4, ngf * 2, 4, 2, 1, bias=False),
-            nn.BatchNorm2d(ngf * 2),
-            nn.ReLU(True),
-            # state size. (ngf*2) x 16 x 16
-            nn.ConvTranspose2d(ngf * 2, ngf, 4, 2, 1, bias=False),
-            nn.BatchNorm2d(ngf),
-            nn.ReLU(True),
-            # state size. (ngf) x 32 x 32
-            nn.ConvTranspose2d(ngf, nc, 4, 2, 1, bias=False),
-            nn.Tanh()
-            # state size. (nc) x 64 x 64
-        )
-
-    def forward(self, input):
-        if isinstance(input.data, torch.cuda.FloatTensor) and self.ngpu > 1:
-            output = nn.parallel.data_parallel(self.main, input, range(self.ngpu))
-        else:
-            output = self.main(input)
-        return output
-
-
-class _netG_autoencoder(nn.Module):
-    def __init__(self, ngpu):
-        super(_netG_autoencoder, self).__init__()
-        self.ngpu = ngpu
-        self.main = nn.Sequential(
-            # ENCODER
-            # input is (nc) x 64 x 64
-            # class torch.nn.Conv2d(in_channels, out_channels, kernel_size, stride=1, padding=0, dilation=1, groups=1, bias=True)
-            nn.Conv2d(nc, ngf, 4, 2, 1, bias=False),
-            nn.LeakyReLU(0.2, inplace=True),
-            # state size. (ngf) x 32 x 32
-            nn.Conv2d(in_channels=ngf, out_channels=ngf * 2, kernel_size=4, stride=2, padding=1, bias=False),
-            nn.BatchNorm2d(ngf * 2),
-            nn.LeakyReLU(0.2, inplace=True),
-            # state size. (ngf*2) x 16 x 16
-            nn.Conv2d(in_channels=ngf * 2, out_channels=ngf * 4, kernel_size=4, stride=2, padding=1, bias=False),
-            nn.BatchNorm2d(ngf * 4),
-            nn.LeakyReLU(0.2, inplace=True),
-            # state size. (ngf*4) x 8 x 8
-            nn.Conv2d(in_channels=ngf * 4, out_channels=ngf * 8, kernel_size=4, stride=2, padding=1, bias=False),
-            nn.BatchNorm2d(ngf * 8),
-            nn.LeakyReLU(0.2, inplace=True),
-            # state size. (ngf*8) x 4 x 4
-            nn.Conv2d(in_channels=ngf * 8, out_channels=ngf * 8, kernel_size=4, stride=2, padding=1, bias=False),
-            nn.BatchNorm2d(ngf * 8),
-            nn.LeakyReLU(0.2, inplace=True),
-            # state size. (ngf*8) x 2 x 2
-            nn.Conv2d(in_channels=ngf * 8, out_channels=ngf * 8, kernel_size=4, stride=2, padding=1, bias=False),
-            nn.BatchNorm2d(ngf * 8),
-            nn.LeakyReLU(0.2, inplace=True),
-            # state size. (ngf*8) x 1 x 1
-
-            # DECODER
-            # class torch.nn.ConvTranspose2d(in_channels, out_channels, kernel_size, stride=1, padding=0, output_padding=0, groups=1, bias=True)
-            nn.ConvTranspose2d(ngf * 8, ngf * 8, 4, 2, 1, bias=False),
-            nn.BatchNorm2d(ngf * 8),
-            nn.ReLU(True),
-            # state size. (ngf*8) x 2 x 2
-            nn.ConvTranspose2d(ngf * 8, ngf * 8, 4, 2, 1, bias=False),
-            nn.BatchNorm2d(ngf * 8),
-            nn.ReLU(True),
-            # state size. (ngf*8) x 4 x 4
-            nn.ConvTranspose2d(ngf * 8, ngf * 4, 4, 2, 1, bias=False),
-            nn.BatchNorm2d(ngf * 4),
-            nn.ReLU(True),
-            # state size. (ngf*4) x 8 x 8
-            nn.ConvTranspose2d(ngf * 4, ngf * 2, 4, 2, 1, bias=False),
-            nn.BatchNorm2d(ngf * 2),
-            nn.ReLU(True),
-            # state size. (ngf*2) x 16 x 16
-            nn.ConvTranspose2d(ngf * 2, ngf, 4, 2, 1, bias=False),
-            nn.BatchNorm2d(ngf),
-            nn.ReLU(True),
-            # state size. (ngf) x 32 x 32
-            nn.ConvTranspose2d(ngf, nc, 4, 2, 1, bias=False),
-            nn.Tanh()
-            # state size. (nc) x 64 x 64
-        )
-
-    def forward(self, input):
-        if isinstance(input.data, torch.cuda.FloatTensor) and self.ngpu > 1:
-            output = nn.parallel.data_parallel(self.main, input, range(self.ngpu))
-        else:
-            output = self.main(input)
-        return output
 

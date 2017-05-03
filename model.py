@@ -1,3 +1,4 @@
+import os
 import numpy as np
 import torch
 import os
@@ -5,10 +6,60 @@ from collections import OrderedDict
 from pdb import set_trace as st
 from torch.autograd import Variable
 import networks
-import util
-from base_model import BaseModel
+from pdb import set_trace as st
 
 
+class BaseModel():
+    def name(self):
+        return 'BaseModel'
+
+    def initialize(self, opt):
+        self.opt = opt
+        self.gpu_ids = opt.gpu_ids
+        self.Tensor = torch.cuda.FloatTensor if self.gpu_ids else torch.Tensor
+        self.save_dir = opt.outf + opt.exp_name
+
+    def set_input(self, input):
+        self.input = input
+
+    def forward(self):
+        pass
+
+    # used in test time, no backprop
+    def test(self):
+        pass
+
+    def get_image_paths(self):
+        pass
+
+    def optimize_parameters(self):
+        pass
+
+    def get_current_visuals(self):
+        return self.input
+
+    def get_current_errors(self):
+        return {}
+
+    def save(self, label):
+        pass
+
+    # helper saving function that can be used by subclasses
+    def save_network(self, network, network_label, epoch_label, gpu_ids):
+        save_filename = '%s_net_%s.pth' % (epoch_label, network_label)
+        save_path = os.path.join(self.save_dir, save_filename)
+        torch.save(network.cpu().state_dict(), save_path)
+        if len(gpu_ids) and torch.cuda.is_available():
+            network.cuda(device_id=gpu_ids[0])
+
+    # helper loading function that can be used by subclasses
+    def load_network(self, network, network_label, epoch_label):
+        save_filename = 'net{}_epoch_{}.pth'.format(network_label, epoch_label)
+        save_path = os.path.join(self.save_dir, save_filename)
+        network.load_state_dict(torch.load(save_path))
+
+    def update_learning_rate():
+        pass
 
 
 class netModel(BaseModel):
@@ -17,7 +68,7 @@ class netModel(BaseModel):
 
     def initialize(self, opt):
         BaseModel.initialize(self, opt)
-        self.isTrain = True
+        self.isTrain = opt.isTrain
         # define tensors
         self.input_hr = self.Tensor(opt.batchSize, opt.input_nc,
                                     opt.hr_height, opt.hr_width)
@@ -36,10 +87,10 @@ class netModel(BaseModel):
                                          opt.which_model_netD,
                                          opt.n_layers_D, use_sigmoid, self.gpu_ids)
 
-        #if not self.isTrain or opt.continue_train:
-        #    self.load_network(self.netG, 'G', opt.which_epoch)
-        #    if self.isTrain:
-        #        self.load_network(self.netD, 'D', opt.which_epoch)
+        if not self.isTrain or opt.continue_train:
+            self.load_network(self.netG, 'G', opt.which_epoch)
+            if self.isTrain:
+                self.load_network(self.netD, 'D', opt.which_epoch)
 
         if self.isTrain:
             # self.fake_AB_pool = ImagePool(opt.pool_size)
@@ -61,12 +112,14 @@ class netModel(BaseModel):
 
     def set_input(self, input):
         input_hr = input[0][0]
-        input_hr_adv = input[1][0]
-        input_lr = input[2][0]
+        input_lr = input[1][0]
 
         self.input_hr.resize_(input_hr.size()).copy_(input_hr)
-        self.input_hr_adv.resize_(input_hr_adv.size()).copy_(input_hr_adv)
         self.input_lr.resize_(input_lr.size()).copy_(input_lr)
+
+        if self.isTrain:
+            input_hr_adv = input[2][0]
+            self.input_hr_adv.resize_(input_hr_adv.size()).copy_(input_hr_adv)
 
     def forward(self):
         self.lr = Variable(self.input_lr)
@@ -79,7 +132,7 @@ class netModel(BaseModel):
         self.lr = Variable(self.input_lr, volatile=True)
         self.sr = self.netG.forward(self.lr)
         self.hr = Variable(self.input_hr, volatile=True)
-        self.hr_adv = Variable(self.input_hr_adv, volatile=True)
+        # self.hr_adv = Variable(self.input_hr_adv, volatile=True)
 
     # get image paths
     def get_image_paths(self):
@@ -147,9 +200,6 @@ class netModel(BaseModel):
 
 
     def get_current_visuals(self):
-        #fake_in = util.tensor2im(self.fake_in.data)
-        #fake_out = util.tensor2im(self.fake_out.data)
-        #real_out = util.tensor2im(self.real_out.data)
         return OrderedDict([('fake_in', self.lr),
                             ('fake_out', self.sr),
                             ('real_out', self.hr)])
