@@ -29,9 +29,9 @@ except OSError:
 
 # Download zip file
 response = urllib2.urlopen('https://s3.amazonaws.com/emrbucket-fnd212/DL_HW/SISR/SISR_celeba_testdata.zip')
-zipfile = response.read()
+saved_data = response.read()
 f = open('./data/SISR_celeba_testdata_S3.zip', 'wb')
-f.write(zipfile)
+f.write(saved_data)
 f.close()
 
 # Unzip data
