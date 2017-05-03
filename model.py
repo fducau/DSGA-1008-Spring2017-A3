@@ -85,6 +85,18 @@ class netModel(BaseModel):
     def get_image_paths(self):
         return self.image_paths
 
+    def accuracy_D(self):
+        # Compute the accuracy on the discriminator
+        pred_fake = self.pred_fake.data.cpu().numpy()
+        pred_real = self.pred_real.data.cpu().numpy()
+
+        fake_correct = (pred_fake < 0.5).sum()
+        real_correct = (pred_real > 0.5).sum()
+
+        acc = (fake_correct + real_correct) / (2. * np.prod(pred_fake.shape))
+        return acc
+
+
     def backward_D(self):
         # stop backprop to the generator by detaching fake_B
         self.pred_fake = self.netD.forward(self.sr.detach())
@@ -114,11 +126,14 @@ class netModel(BaseModel):
 
         self.optimizer_D.zero_grad()
         self.backward_D()
-        self.optimizer_D.step()
+        self.acc = self.accuracy_D()
+        if self.acc < 0.99:
+            self.optimizer_D.step()
 
         self.optimizer_G.zero_grad()
         self.backward_G()
-        self.optimizer_G.step()
+        if self.acc > 0.7:
+            self.optimizer_G.step()
 
     def get_current_errors(self):
         return OrderedDict([('G_GAN', self.loss_G_GAN.data[0]),
