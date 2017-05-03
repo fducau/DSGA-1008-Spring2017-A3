@@ -15,6 +15,8 @@ opt.dataroot_lr = opt.dataroot_lr_test
 opt.dataroot_hr = opt.dataroot_hr_test
 opt.isTrain = False
 
+print('test_time:', opt)
+
 # TODO check if downloading model
 opt.exp_name = opt.exp_name_reload
 
@@ -23,7 +25,9 @@ dataset_hr = dset.ImageFolder(
     transform=transforms.Compose([
         transforms.ToTensor(),
         transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))]))
+
 assert dataset_hr
+
 dataset_size = len(dataset_hr)
 dataloader_hr = torch.utils.data.DataLoader(
     dataset_hr,
@@ -49,8 +53,8 @@ model = netModel()
 model.initialize(opt)
 
 # Get one batch from each dataloader
-data_lr = iter(dataloader_lr).next()
 data_hr = iter(dataloader_hr).next()
+data_lr = iter(dataloader_lr).next()
 
 model.set_input((data_hr, data_lr))
 model.test()
@@ -58,13 +62,13 @@ visuals = model.get_current_visuals()
 
 vutils.save_image(
     visuals['real_out'].data,
-    '%s/real_samples.png' % (opt.outf + opt.exp_name),
+    '%s/real_test_samples.png' % (opt.outf + opt.exp_name),
     normalize=True)
 vutils.save_image(
     visuals['fake_out'].data,
-    '%s/fake_samples.png' % (opt.outf + opt.exp_name),
+    '%s/fake_test_samples.png' % (opt.outf + opt.exp_name),
     normalize=True)
 vutils.save_image(
     visuals['fake_in'].data,
-    '%s/input_samples.png' % (opt.outf + opt.exp_name),
+    '%s/input_test_samples.png' % (opt.outf + opt.exp_name),
     normalize=True)
