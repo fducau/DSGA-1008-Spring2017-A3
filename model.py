@@ -169,7 +169,7 @@ class netModel(BaseModel):
 
         # Second, G(A) = B
         self.loss_G_content = self.content_loss(self.sr, self.hr)
-        self.loss_G = self.loss_G_content #+ self.loss_G_GAN * self.opt.L1lambda
+        self.loss_G = self.loss_G_content + self.loss_G_GAN * self.opt.L1lambda
 
         self.loss_G.backward()
 
